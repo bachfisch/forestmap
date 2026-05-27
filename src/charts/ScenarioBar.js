@@ -1,31 +1,57 @@
-import { parseLayerName, SPECIES_LABELS } from "../chartTheme.js";
+import { parseLayerName } from "../chartTheme.js";
 
 export function render({ results, serviceConfig }) {
   const wrapper = document.createElement("div");
   wrapper.className = "chart-scenario";
 
-  const points = results
-    .map(r => {
-      const { speciesKey, speciesLabel, meta, color } = parseLayerName(r.layer.name);
-      return {
-        speciesKey,
-        speciesLabel,
-        barLabel: meta?.label ?? r.layer.label,
-        timePeriod: meta?.timePeriod ?? r.layer.label,
-        group: meta?.group ?? "Andere",
-        groupOrder: meta?.groupOrder ?? 99,
-        order: meta?.order ?? 99,
-        color: r.pixelColor ?? color,
-        value: r.value,
-        layer: r.layer,
-      };
-    })
-    .filter(p => p.value !== null);
+  const valueMap = new Map(results.map(r => [r.layer.name, r.value]));
 
-  if (!points.length) {
+  const points = serviceConfig.layers.map(layer => {
+    const { speciesKey, speciesLabel, meta, color } = parseLayerName(layer.name);
+    return {
+      speciesKey,
+      speciesLabel,
+      barLabel: meta?.label ?? layer.label,
+      timePeriod: meta?.timePeriod ?? layer.label,
+      group: meta?.group ?? "Andere",
+      groupOrder: meta?.groupOrder ?? 99,
+      order: meta?.order ?? 99,
+      color,
+      value: valueMap.get(layer.name) ?? null,
+      layer,
+    };
+  });
+
+  const anyValue = points.some(p => p.value !== null);
+  if (!anyValue) {
     wrapper.innerHTML = `<p class="chart-empty">Kein Wert an dieser Stelle.</p>`;
     return wrapper;
   }
+
+  // scenarioRelative: RCP layers carry fractional change relative to Heute base
+  // Convert: absolute = base * (1 + relChange)
+  if (serviceConfig.scenarioRelative) {
+    const bySpecies = new Map();
+    for (const p of points) {
+      const key = p.speciesKey ?? "__all__";
+      if (!bySpecies.has(key)) bySpecies.set(key, []);
+      bySpecies.get(key).push(p);
+    }
+    for (const pts of bySpecies.values()) {
+      const base = pts.find(p => p.groupOrder === 0)?.value ?? null;
+      if (base === null) continue;
+      for (const p of pts) {
+        if (p.value !== null && p.groupOrder !== 0)
+          p.value = base * (1 + p.value);
+      }
+    }
+  }
+
+  // Shared y-domain across all species charts for comparability
+  const allVals = points.map(p => p.value).filter(v => v !== null);
+  const yDomain = allVals.length
+    ? [Math.min(0, ...allVals), Math.max(...allVals)]
+    : undefined;
 
   const bySpecies = new Map();
   for (const p of points) {
@@ -53,7 +79,7 @@ export function render({ results, serviceConfig }) {
     }
 
     wrapper.append(renderGroupAxis(deduped));
-    wrapper.append(renderBars(deduped));
+    wrapper.append(renderBars(deduped, yDomain));
   }
 
   return wrapper;
@@ -95,11 +121,9 @@ function renderGroupAxis(points) {
   return axis;
 }
 
-function renderBars(points) {
+function renderBars(points, yDomain) {
   const Plot = window.Plot;
-  if (!Plot) {
-    return fallbackBars(points);
-  }
+  if (!Plot) return fallbackBars(points);
 
   const timePeriodMap = new Map(points.map(p => [p.barLabel, p.timePeriod]));
 
@@ -117,9 +141,9 @@ function renderBars(points) {
       label: null,
       tickSize: 0,
     },
-    y: { label: null, grid: true, tickCount: 4 },
+    y: { label: null, grid: true, tickCount: 4, domain: yDomain },
     marks: [
-      Plot.barY(points, {
+      Plot.barY(points.filter(p => p.value !== null), {
         x: "barLabel",
         y: "value",
         fill: d => d.color,
@@ -142,7 +166,7 @@ function renderBars(points) {
 
 function fallbackBars(points) {
   const max = Math.max(...points.map(p => Math.abs(p.value ?? 0))) || 1;
-  const rows = points.map(p => `
+  const rows = points.filter(p => p.value !== null).map(p => `
     <div class="fb-row">
       <span class="fb-label">${p.timePeriod}</span>
       <div class="fb-bar-wrap">

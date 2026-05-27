@@ -423,6 +423,7 @@ export const SERVICES = [
     ],
     featureInfoType: "value-only",
     chartComponent: "ScenarioBar",
+    scenarioRelative: true,
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
   },

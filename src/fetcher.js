@@ -113,44 +113,30 @@ export async function queryAtPoint(lng, lat, viewport) {
 
   if (!activeServices.length) return [];
 
-  const hasFern = activeServices.some(s => s.category === "fernerkundung");
   const tasks = [];
 
-  if (hasFern) {
-    for (const svc of SERVICES.filter(s => s.category === "fernerkundung")) {
-      for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`))) {
+  for (const svc of activeServices) {
+    const cat = svc.category;
+    if (cat === "fernerkundung") {
+      for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "fern", service: svc, layer: l });
-      }
+    } else if (cat === "klima" || cat === "dwd") {
+      for (const l of svc.layers)
+        tasks.push({ kind: "klima", service: svc, layer: l });
+    } else {
+      for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
+        tasks.push({ kind: "standard", service: svc, layer: l });
     }
   }
 
-  for (const svc of activeServices.filter(s => s.category === "klima" || s.category === "dwd")) {
-    for (const l of svc.layers) tasks.push({ kind: "klima", service: svc, layer: l });
-  }
-
-  for (const svc of activeServices.filter(s => s.category !== "fernerkundung" && s.category !== "klima" && s.category !== "dwd")) {
-    for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`))) {
-      tasks.push({ kind: "standard", service: svc, layer: l });
-    }
-  }
-
-  const phase1 = await Promise.all(
+  const settled = await Promise.all(
     tasks.map(async t => {
       if (t.kind === "fern") {
         const color = await fetchPixelColor(t.service, t.layer, lng, lat);
-        return { ...t, result: { layer: t.layer, value: color, properties: null } };
+        return { ...t, result: { layer: t.layer, value: color, properties: null, pixelColor: null } };
       }
-      return { ...t, result: await fetchGfi(t.service, t.layer, viewport) };
-    })
-  );
-
-  const settled = await Promise.all(
-    phase1.map(async t => {
-      if (t.kind !== "klima" || t.result.value === null) {
-        return { ...t, result: { ...t.result, pixelColor: null } };
-      }
-      const pixelColor = await fetchPixelColor(t.service, t.layer, lng, lat);
-      return { ...t, result: { ...t.result, pixelColor } };
+      const result = await fetchGfi(t.service, t.layer, viewport);
+      return { ...t, result: { ...result, pixelColor: null } };
     })
   );
 
