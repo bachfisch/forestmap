@@ -74,6 +74,72 @@ function parseJsonGfi(service, layer, text) {
   }
 }
 
+async function fetchWfs(service, lng, lat) {
+  const d = 0.0001;
+  const url =
+    `${service.wfsUrl}` +
+    `?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature` +
+    `&TYPENAMES=cp:CadastralParcel&COUNT=10&SRSNAME=EPSG:4326` +
+    `&BBOX=${lng - d},${lat - d},${lng + d},${lat + d},EPSG:4326`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    return parseGmlParcels(await res.text(), lng, lat);
+  } catch {
+    return null;
+  }
+}
+
+function parseGmlParcels(gml, lng, lat) {
+  try {
+    const doc = new DOMParser().parseFromString(gml, "text/xml");
+    const parcelEls = Array.from(doc.getElementsByTagName("cp:CadastralParcel"));
+    if (!parcelEls.length) return null;
+
+    for (const parcel of parcelEls) {
+      const parsed = parseOneParcel(parcel);
+      if (!parsed?.geometry) continue;
+      const ring = parsed.geometry.coordinates[0];
+      if (pointInRing(lng, lat, ring)) return parsed;
+    }
+    // Fallback: return first if none matched (e.g. click on boundary)
+    return parseOneParcel(parcelEls[0]);
+  } catch {
+    return null;
+  }
+}
+
+function parseOneParcel(parcel) {
+  const label = parcel.getElementsByTagName("cp:label")[0]?.textContent?.trim() ?? null;
+  const areaEl = parcel.getElementsByTagName("cp:areaValue")[0];
+  const areaValue = areaEl ? parseFloat(areaEl.textContent) : null;
+  const refEl = parcel.getElementsByTagName("cp:nationalCadastralReference")[0];
+  const nationalRef = refEl?.textContent?.trim() ?? null;
+
+  let geometry = null;
+  const posListEl = parcel.getElementsByTagName("gml:posList")[0];
+  if (posListEl) {
+    const nums = posListEl.textContent.trim().split(/\s+/).map(Number);
+    const coords = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) coords.push([nums[i], nums[i + 1]]);
+    if (coords.length >= 3) geometry = { type: "Polygon", coordinates: [coords] };
+  }
+
+  return { label, areaValue, nationalRef, geometry };
+}
+
+function pointInRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
 async function fetchPixelColor(service, layer, lng, lat) {
   const d = 0.0001;
   const version = service.wmsVersion ?? "1.3.0";
@@ -107,7 +173,7 @@ export async function queryAtPoint(lng, lat, viewport) {
   const visible = getVisible();
 
   const activeServices = SERVICES.filter(s =>
-    s.featureInfoType !== "none" &&
+    (s.featureInfoType !== "none" || s.wfsUrl) &&
     s.layers.some(l => visible.has(`${s.id}::${l.name}`))
   );
 
@@ -123,6 +189,9 @@ export async function queryAtPoint(lng, lat, viewport) {
     } else if (cat === "klima" || cat === "dwd") {
       for (const l of svc.layers)
         tasks.push({ kind: "klima", service: svc, layer: l });
+    } else if (cat === "flurstücke" && svc.wfsUrl) {
+      if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
+        tasks.push({ kind: "wfs", service: svc, layer: svc.layers[0] });
     } else {
       for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "standard", service: svc, layer: l });
@@ -134,6 +203,22 @@ export async function queryAtPoint(lng, lat, viewport) {
       if (t.kind === "fern") {
         const color = await fetchPixelColor(t.service, t.layer, lng, lat);
         return { ...t, result: { layer: t.layer, value: color, properties: null, pixelColor: null } };
+      }
+      if (t.kind === "wfs") {
+        const parsed = await fetchWfs(t.service, lng, lat);
+        return {
+          ...t,
+          result: {
+            layer: t.layer,
+            value: parsed?.label ?? null,
+            properties: parsed ? {
+              "Flurstücknummer": parsed.label,
+              "Fläche": parsed.areaValue != null ? `${Math.round(parsed.areaValue).toLocaleString("de-DE")} m²` : null,
+              "Katasterreferenz": parsed.nationalRef,
+            } : null,
+            geometry: parsed?.geometry ?? null,
+          },
+        };
       }
       const result = await fetchGfi(t.service, t.layer, viewport);
       return { ...t, result: { ...result, pixelColor: null } };
@@ -162,6 +247,14 @@ export async function queryAtPoint(lng, lat, viewport) {
     stdMap.get(r.service.id).results.push(r.result);
   }
   entries.push(...stdMap.values());
+
+  const wfsMap = new Map();
+  for (const r of settled.filter(r => r.kind === "wfs")) {
+    if (!wfsMap.has(r.service.id))
+      wfsMap.set(r.service.id, { kind: "standard", service: r.service, results: [] });
+    wfsMap.get(r.service.id).results.push(r.result);
+  }
+  entries.push(...wfsMap.values());
 
   return entries;
 }

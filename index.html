@@ -388,26 +388,151 @@
       background: #f0faf6;
     }
 
+    .report-toggle {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .report-btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 6px 0;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-family: var(--font);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .report-btn:hover { background: var(--accent-hover); }
+    .report-btn:disabled { opacity: 0.6; cursor: default; }
+
     /* MapLibre overrides */
     .maplibregl-ctrl-group { box-shadow: 0 1px 4px rgba(0,0,0,0.15) !important; }
+
+    /* ── LEGAL LINKS ─────────────────────────────────────────────── */
+
+    #legal-links {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    #legal-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    #legal-links a:hover { color: var(--text); }
+
+    /* ── MODAL ───────────────────────────────────────────────────── */
+
+    #legal-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #legal-modal.open { display: flex; }
+
+    #legal-modal-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+      width: 480px;
+      max-width: 90vw;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #legal-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #legal-modal-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    #legal-modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+    }
+
+    #legal-modal-close:hover { background: var(--bg); color: var(--text); }
+
+    #legal-modal-body {
+      overflow-y: auto;
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+
+    #legal-modal-body h3 {
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 12px;
+      margin-bottom: 4px;
+    }
+
+    #legal-modal-body h3:first-child { margin-top: 0; }
+
+    #legal-modal-body p { margin-bottom: 6px; }
   </style>
 </head>
 <body>
   <div id="app">
     <aside id="sidebar">
       <div id="sidebar-header">
-        <h1>FVA Geo-Viewer</h1>
-        <p>Geodatendienste FVA Baden-Württemberg</p>
+        <h1>Forst Geodaten</h1>
+        <p>Geodatendienste in Baden-Württemberg</p>
       </div>
       <nav id="sidebar-nav"></nav>
+      <div id="legal-links">
+        <a href="#" id="link-impressum">Impressum</a>
+        <a href="#" id="link-datenschutz">Datenschutz</a>
+      </div>
     </aside>
 
     <div id="map-container">
       <div id="map"></div>
 
+      <div id="legal-modal">
+        <div id="legal-modal-box">
+          <div id="legal-modal-header">
+            <h2 id="legal-modal-title"></h2>
+            <button id="legal-modal-close" title="Schließen">×</button>
+          </div>
+          <div id="legal-modal-body"></div>
+        </div>
+      </div>
+
       <div id="popup-panel">
         <div id="popup-toolbar">
-          <span>Abfrage</span>
+          <span>Lokal</span>
           <button id="popup-close" title="Schließen">×</button>
         </div>
         <div id="popup-content"></div>
@@ -416,5 +541,47 @@
   </div>
 
   <script type="module" src="src/map.js"></script>
+  <script>
+    const IMPRESSUM = `
+      <h3>Angaben gemäß § 5 TMG</h3>
+      <p>Lorenz Bachfischer<br>Rohrgraben 11<br>79114 Freiburg im Breisgau</p>
+      <h3>Kontakt</h3>
+      <p>E-Mail: lorenz.bachfischer@posteo.de</p>
+      <h3>Hinweis zu Geodaten</h3>
+      <p>Die dargestellten Geodaten stammen von der Forstlichen Versuchs- und Forschungsanstalt Baden-Württemberg (FVA), dem Deutschen Wetterdienst (DWD) und dem Landesamt für Geoinformation und Landentwicklung Baden-Württemberg (LGL BW). Die Nutzungsbedingungen der jeweiligen Anbieter sind zu beachten.</p>
+    `;
+
+    const DATENSCHUTZ = `
+      <h3>Verantwortlicher</h3>
+      <p>Lorenz Bachfischer, Rohrgraben 11, 79114 Freiburg im Breisgau<br>E-Mail: lorenz.bachfischer@posteo.de</p>
+      <h3>Erhebung und Verarbeitung personenbezogener Daten</h3>
+      <p>Diese Anwendung speichert keine personenbezogenen Daten. Es werden keine Cookies gesetzt und kein Tracking durchgeführt.</p>
+      <h3>Externe Dienste</h3>
+      <p>Beim Laden der Kartenanwendung werden Verbindungen zu folgenden externen Diensten hergestellt:</p>
+      <p><strong>OpenFreeMap</strong> (Basiskarte): Bereitgestellt von OpenFreeMap (openfreemap.org), basierend auf OpenStreetMap-Daten. Beim Abrufen von Kartenkacheln wird Ihre IP-Adresse an den Server übermittelt.</p>
+      <p><strong>FVA / LGL BW / DWD</strong> (Geodatendienste): Kartendaten und Abfragen werden über den OWS-Proxy des LGL BW abgerufen. Dabei wird Ihre IP-Adresse an den jeweiligen Server übermittelt.</p>
+      <p><strong>unpkg.com</strong> (CDN): JavaScript-Bibliotheken werden von unpkg.com geladen. Dabei wird Ihre IP-Adresse übermittelt.</p>
+    `;
+
+    const modal   = document.getElementById("legal-modal");
+    const title   = document.getElementById("legal-modal-title");
+    const body    = document.getElementById("legal-modal-body");
+    const closeBtn = document.getElementById("legal-modal-close");
+
+    function openModal(heading, html) {
+      title.textContent = heading;
+      body.innerHTML = html;
+      modal.classList.add("open");
+    }
+
+    document.getElementById("link-impressum").addEventListener("click", e => {
+      e.preventDefault(); openModal("Impressum", IMPRESSUM);
+    });
+    document.getElementById("link-datenschutz").addEventListener("click", e => {
+      e.preventDefault(); openModal("Datenschutzerklärung", DATENSCHUTZ);
+    });
+    closeBtn.addEventListener("click", () => modal.classList.remove("open"));
+    modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("open"); });
+  </script>
 </body>
 </html>

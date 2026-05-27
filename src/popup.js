@@ -3,7 +3,7 @@ import { render as FeatureTable }     from "./charts/FeatureTable.js";
 import { render as ScenarioBar }      from "./charts/ScenarioBar.js";
 import { render as BuchdruckerChart } from "./charts/BuchdruckerChart.js";
 import { render as BodenfeuchteChart} from "./charts/BodenfeuchteChart.js";
-import { getFilter } from "./state.js";
+import { getFilter, getReportMode } from "./state.js";
 import { setHighlight, clearHighlight } from "./highlight.js";
 
 const ChartRegistry = {
@@ -104,6 +104,14 @@ function renderEntry(entry) {
   body.className = "popup-entry-body";
   body.append(ChartFn(context));
 
+  if (service.category === "flurstücke" && firstResult.geometry) {
+    const btn = document.createElement("button");
+    btn.className = "report-btn";
+    btn.textContent = "Report erstellen";
+    btn.addEventListener("click", () => triggerReport(firstResult, btn));
+    body.append(btn);
+  }
+
   section.append(header, body);
   return section;
 }
@@ -145,4 +153,25 @@ function defaultChart(service) {
   if (service.dataSource?.type === "wms-multi") return ScenarioBar;
   if (service.featureInfoType === "geojson")    return FeatureTable;
   return RasterValue;
+}
+
+async function triggerReport(parcelResult, btn) {
+  btn.textContent = "Wird erstellt…";
+  btn.disabled = true;
+
+  // Open window synchronously while still in user-gesture context,
+  // before any await breaks the gesture chain.
+  const w = window.open("", "_blank");
+  if (!w) {
+    btn.textContent = "Report erstellen";
+    btn.disabled = false;
+    return;
+  }
+  w.document.write(`<p style="font-family:system-ui;padding:24px;color:#666">Wird geladen…</p>`);
+
+  const { generateReport } = await import("./report.js");
+  await generateReport(parcelResult, w);
+
+  btn.textContent = "Report erstellen";
+  btn.disabled = false;
 }

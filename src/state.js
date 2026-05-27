@@ -40,3 +40,7 @@ export function setFilter(serviceId, layerName, value) {
 export function getFilter(serviceId, layerName) {
   return layerFilters.get(`${serviceId}::${layerName}`) ?? null;
 }
+
+let _reportMode = false;
+export function getReportMode() { return _reportMode; }
+export function setReportMode(v) { _reportMode = v; }

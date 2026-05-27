@@ -9,7 +9,8 @@ export const CATEGORIES = [
   { id: "windenergie",    label: "Windenergie im Wald",        icon: "💨" },
   { id: "fernerkundung",  label: "Fernerkundung",              icon: "🛰️" },
   { id: "dwd",            label: "DWD Wetter & Klima",         icon: "☁️" },
-  { id: "kataster",       label: "Flurstücke & Forstbezirke",  icon: "📐" },
+  { id: "forstbw",        label: "ForstBW",                    icon: "🌳" },
+  { id: "flurstücke",    label: "Flurstücke",                 icon: "📐" },
 ];
 
 export const SERVICES = [
@@ -721,7 +722,7 @@ export const SERVICES = [
 
   {
     id: "forstbezirke",
-    category: "kataster",
+    category: "forstbw",
     label: "Forstbezirke (ForstBW)",
     abstract: "Forstliche Bewirtschaftungsgebiete und Forstbezirke in Baden-Württemberg. Quelle: ForstBW. Lizenz: CC BY-SA 4.0.",
     wmsUrl: `${OWS_BASE}/WMS_ForstBW_NachhaltWaldwirtschaft`,
@@ -740,15 +741,16 @@ export const SERVICES = [
 
   {
     id: "flurstuecke",
-    category: "kataster",
+    category: "flurstücke",
     label: "Flurstücke (ALKIS/LGL)",
     abstract: "Amtliche Flurstücke aus dem ALKIS-Datenbestand des LGL BW. Open Data, keine Eigentümerdaten.",
     wmsUrl: `${OWS_BASE}/WMS_INSP_BW_Flst_ALKIS`,
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Flst_ALKIS",
     wmsVersion: "1.3.0",
     layers: [
-      { name: "alkis:CP.CadastralParcel", label: "Flurstücke", defaultVisible: false, sidebarFilter: { field: "label", placeholder: "Flurstücknummer…" } },
+      { name: "alkis:CP.CadastralParcel", label: "Flurstücke", defaultVisible: false },
     ],
-    featureInfoType: "geojson",
+    featureInfoType: "none",
     chartComponent: "FeatureTable",
     updateInterval: "monthly",
     license: "open-data",
