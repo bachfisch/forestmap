@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FVA Geo-Viewer</title>
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/dist/plot.umd.min.js"></script>
+  <style>
+    :root {
+      --sidebar-w: 280px;
+      --panel-w: 340px;
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #e0ddd8;
+      --text: #2a2722;
+      --text-muted: #888780;
+      --accent: #1D9E75;
+      --accent-hover: #178a65;
+      --font: system-ui, -apple-system, sans-serif;
+      --radius: 6px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────────── */
+
+    #sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #sidebar-header {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #sidebar-header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+
+    #sidebar-header p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    #sidebar-nav {
+      overflow-y: auto;
+      flex: 1;
+      padding: 6px 0 16px;
+    }
+
+    .cat-group {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .cat-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      list-style: none;
+      user-select: none;
+    }
+
+    .cat-header::-webkit-details-marker { display: none; }
+
+    .cat-header:hover { background: var(--bg); }
+
+    .cat-icon { font-size: 14px; line-height: 1; }
+
+    .cat-label { flex: 1; }
+
+    .cat-header::after {
+      content: "›";
+      font-size: 16px;
+      color: var(--text-muted);
+      transition: transform 0.15s;
+    }
+
+    details[open] > .cat-header::after { transform: rotate(90deg); }
+
+    .svc-section {
+      padding: 4px 0 4px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .svc-section:first-of-type { border-top: none; }
+
+    .svc-header {
+      padding: 5px 16px 2px 32px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .layer-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 4px 16px 4px 32px;
+      cursor: pointer;
+      line-height: 1.3;
+    }
+
+    .layer-toggle:hover { background: var(--bg); }
+
+    .layer-toggle input[type="checkbox"] {
+      flex-shrink: 0;
+      margin-top: 2px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .layer-label {
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    /* ── MAP ─────────────────────────────────────────────────── */
+
+    #map-container {
+      flex: 1;
+      position: relative;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── POPUP PANEL ─────────────────────────────────────────── */
+
+    #popup-panel {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: var(--panel-w);
+      height: 100%;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+      z-index: 10;
+      box-shadow: -4px 0 16px rgba(0,0,0,0.08);
+    }
+
+    #popup-panel.open {
+      transform: translateX(0);
+    }
+
+    #popup-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #popup-toolbar span {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #popup-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+    }
+
+    #popup-close:hover { background: var(--bg); color: var(--text); }
+
+    #popup-content {
+      overflow-y: auto;
+      flex: 1;
+      padding: 0 0 16px;
+    }
+
+    .popup-coords {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      padding: 8px 14px 6px;
+    }
+
+    .popup-loading {
+      padding: 20px 14px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .popup-empty {
+      padding: 20px 14px;
+      color: var(--text-muted);
+    }
+
+    .popup-hint {
+      padding: 0 14px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .popup-entry {
+      border-top: 1px solid var(--border);
+    }
+
+    .popup-entry-header {
+      padding: 8px 14px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .popup-entry-body {
+      padding: 4px 14px 10px;
+    }
+
+    /* ── CHARTS ──────────────────────────────────────────────── */
+
+    .chart-empty, .chart-raster p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .raster-value-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .raster-value {
+      font-size: 24px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+
+    .raster-legend {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .attr-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .attr-table th,
+    .attr-table td {
+      padding: 3px 0;
+      vertical-align: top;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .attr-table th {
+      width: 40%;
+      color: var(--text-muted);
+      font-weight: 500;
+      padding-right: 8px;
+    }
+
+    .attr-table td {
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .species-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 6px;
+      margin-bottom: 2px;
+    }
+
+    .fallback-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .fb-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+    }
+
+    .fb-label {
+      width: 70px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .fb-bar-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .fb-bar {
+      height: 14px;
+      min-width: 2px;
+      border-radius: 2px;
+    }
+
+    .fb-val {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .layer-filter {
+      margin: 2px 16px 4px 52px;
+    }
+
+    .layer-filter input {
+      width: 100%;
+      padding: 3px 6px;
+      font-size: 11px;
+      font-family: var(--font);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+    }
+
+    .layer-filter input:focus {
+      border-color: var(--accent);
+    }
+
+    .layer-filter input.active {
+      border-color: var(--accent);
+      background: #f0faf6;
+    }
+
+    /* MapLibre overrides */
+    .maplibregl-ctrl-group { box-shadow: 0 1px 4px rgba(0,0,0,0.15) !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="sidebar-header">
+        <h1>FVA Geo-Viewer</h1>
+        <p>Geodatendienste FVA Baden-Württemberg</p>
+      </div>
+      <nav id="sidebar-nav"></nav>
+    </aside>
+
+    <div id="map-container">
+      <div id="map"></div>
+
+      <div id="popup-panel">
+        <div id="popup-toolbar">
+          <span>Abfrage</span>
+          <button id="popup-close" title="Schließen">×</button>
+        </div>
+        <div id="popup-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="src/map.js"></script>
+</body>
+</html>
