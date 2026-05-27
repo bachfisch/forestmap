@@ -1,5 +1,5 @@
 import { CATEGORIES, SERVICES } from "../services.js";
-import { isVisible, toggle, setFilter, getFilter, getReportMode, setReportMode } from "./state.js";
+import { isVisible, toggle, setFilter, getFilter } from "./state.js";
 
 export function initSidebar() {
   const nav = document.getElementById("sidebar-nav");
@@ -44,28 +44,7 @@ function renderService(svc) {
     }
   }
 
-  if (svc.category === "flurstücke") {
-    section.append(renderReportToggle());
-  }
-
   return section;
-}
-
-function renderReportToggle() {
-  const wrap = document.createElement("label");
-  wrap.className = "layer-toggle report-toggle";
-
-  const cb = document.createElement("input");
-  cb.type = "checkbox";
-  cb.checked = getReportMode();
-  cb.addEventListener("change", () => setReportMode(cb.checked));
-
-  const span = document.createElement("span");
-  span.className = "layer-label";
-  span.textContent = "Report erstellen";
-
-  wrap.append(cb, span);
-  return wrap;
 }
 
 function renderToggle(svc, layer, label) {

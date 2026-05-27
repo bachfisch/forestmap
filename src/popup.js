@@ -108,12 +108,29 @@ function renderEntry(entry) {
     const btn = document.createElement("button");
     btn.className = "report-btn";
     btn.textContent = "Report erstellen";
-    btn.addEventListener("click", () => triggerReport(firstResult, btn));
-    body.append(btn);
+
+    const statusEl = document.createElement("p");
+    statusEl.className = "report-status";
+
+    btn.addEventListener("click", () => triggerReport(firstResult, btn, statusEl));
+    body.append(btn, statusEl);
   }
 
   section.append(header, body);
   return section;
+}
+
+function matchColorToLegend(hex, legend) {
+  if (!legend?.entries?.length) return null;
+  const rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const dist = ([r1,g1,b1],[r2,g2,b2]) => Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+  const pixRgb = rgb(hex);
+  let best = null, bestDist = Infinity;
+  for (const e of legend.entries) {
+    const d = dist(pixRgb, rgb(e.hex));
+    if (d < bestDist) { bestDist = d; best = e; }
+  }
+  return bestDist < 100 ? best : null;
 }
 
 function renderFernEntry({ rows }) {
@@ -133,9 +150,15 @@ function renderFernEntry({ rows }) {
 
   for (const r of withValues) {
     const tr = document.createElement("tr");
-    const valCell = typeof r.value === "string" && r.value.startsWith("#")
-      ? `<span style="display:inline-block;width:14px;height:14px;background:${r.value};border-radius:3px;vertical-align:middle;border:1px solid var(--border)"></span>`
-      : (r.value?.toFixed?.(2) ?? r.value);
+    const isHex = typeof r.value === "string" && r.value.startsWith("#");
+    let valCell;
+    if (isHex) {
+      const swatch = `<span style="display:inline-block;width:12px;height:12px;background:${r.value};border-radius:3px;vertical-align:middle;border:1px solid var(--border);margin-right:5px"></span>`;
+      const matched = matchColorToLegend(r.value, r.service.colorLegend);
+      valCell = matched ? `${swatch}${matched.label}` : swatch;
+    } else {
+      valCell = r.value?.toFixed?.(2) ?? r.value;
+    }
     tr.innerHTML = `<th>${r.service.label}</th><td>${valCell}</td>`;
     tbody.append(tr);
   }
@@ -155,12 +178,10 @@ function defaultChart(service) {
   return RasterValue;
 }
 
-async function triggerReport(parcelResult, btn) {
+async function triggerReport(parcelResult, btn, statusEl) {
   btn.textContent = "Wird erstellt…";
   btn.disabled = true;
 
-  // Open window synchronously while still in user-gesture context,
-  // before any await breaks the gesture chain.
   const w = window.open("", "_blank");
   if (!w) {
     btn.textContent = "Report erstellen";
@@ -170,8 +191,9 @@ async function triggerReport(parcelResult, btn) {
   w.document.write(`<p style="font-family:system-ui;padding:24px;color:#666">Wird geladen…</p>`);
 
   const { generateReport } = await import("./report.js");
-  await generateReport(parcelResult, w);
+  await generateReport(parcelResult, w, msg => { statusEl.textContent = msg; });
 
+  statusEl.textContent = "";
   btn.textContent = "Report erstellen";
   btn.disabled = false;
 }
