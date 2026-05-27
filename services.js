@@ -632,9 +632,9 @@ export const SERVICES = [
     ],
     featureInfoType: "value-only",
     colorLegend: { type: "pie", entries: [
-      { hex: "#59A48A", label: "Nadelwälder" },
-      { hex: "#B3CC86", label: "Mischwälder" },
-      { hex: "#C6EF76", label: "Laubwälder" },
+      { hex: "#00734c", label: "Nadelwälder" },
+      { hex: "#8ab045", label: "Mischwälder" },
+      { hex: "#a8e62c", label: "Laubwälder" },
     ]},
     updateInterval: "monthly",
     license: "open-data",
@@ -704,7 +704,7 @@ export const SERVICES = [
       { name: "fern_waldbedeckung", label: "Waldbedeckung", defaultVisible: false },
     ],
     featureInfoType: "value-only",
-    colorLegend: { type: "pie", entries: [
+    colorLegend: { type: "pie", countParcel: true, entries: [
       { hex: "#00734c", label: "Wald" },
     ]},
     updateInterval: "monthly",
@@ -722,7 +722,7 @@ export const SERVICES = [
       { name: "fern_bestockungslayer", label: "Waldbestockung", defaultVisible: false },
     ],
     featureInfoType: "value-only",
-    colorLegend: { type: "pie", entries: [
+    colorLegend: { type: "pie", countParcel: true, entries: [
       { hex: "#66cdab", label: "bestockt" },
     ]},
     updateInterval: "monthly",

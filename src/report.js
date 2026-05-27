@@ -23,7 +23,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}) {
   const gridPts = buildGrid(ring, west, east, south, north, 15);
 
   onStatus("Fernerkundung wird analysiert…");
-  const [waldfunk, biotopeRaw, standortRaw, fernData] = await Promise.all([
+  const [waldfunk, biotopeRaw, standortRaw, fernStack] = await Promise.all([
     Promise.all(WALDFUNK_SVCS.map(svc =>
       gfiCoverage(svc.wmsUrl, svc.layers[0].name, gridPts)
         .then(pct => ({ label: svc.label, pct }))
@@ -32,16 +32,11 @@ export async function generateReport(parcelResult, w, onStatus = () => {}) {
       .then(r => { onStatus("Standortskarte wird abgefragt…"); return r; }),
     gridGfi(STANDORT_SVC.wmsUrl, STANDORT_SVC.layers[0].name, gridPts)
       .then(r => { onStatus("Report wird aufgebaut…"); return r; }),
-    Promise.all(FERN_SVCS.map(svc =>
-      colorDistribution(svc.wmsUrl, svc.layers[0].name, bbox, ring, west, east, south, north)
-        .then(colors => {
-          const matched = svc.colorLegend
-            ? matchToLegend(colors, svc.colorLegend)
-            : { type: "pie", segments: colors };
-          return { label: svc.label, id: svc.id, ...matched };
-        })
-    )).then(r => { onStatus("Waldfunktionen werden abgefragt…"); return r; }),
+    fetchFernStack(FERN_SVCS, bbox, ring, west, east, south, north)
+      .then(r => { onStatus("Waldfunktionen werden abgefragt…"); return r; }),
   ]);
+
+  const fernData = stackToFernData(fernStack, FERN_SVCS);
 
   const html = buildHtml(parcelResult.properties, waldfunk, biotopeRaw, standortRaw, fernData);
   w.document.open();
@@ -82,7 +77,7 @@ async function pointGfi(wmsUrl, layerName, lng, lat) {
     `${wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo` +
     `&FORMAT=image/png&TRANSPARENT=true` +
     `&SRS=EPSG:4326&BBOX=${lng-d},${lat-d},${lng+d},${lat+d}` +
-    `&WIDTH=11&HEIGHT=11&X=5&Y=5` +
+    `&WIDTH=256&HEIGHT=256&X=128&Y=128` +
     `&LAYERS=${encodeURIComponent(layerName)}&QUERY_LAYERS=${encodeURIComponent(layerName)}` +
     `&INFO_FORMAT=application/json&FEATURE_COUNT=1`;
   try {
@@ -113,70 +108,116 @@ async function pointGfi(wmsUrl, layerName, lng, lat) {
   } catch { return null; }
 }
 
-// ── Pixel color distribution ──────────────────────────────────────────────────
+// ── Fernerkundung pixel stack ─────────────────────────────────────────────────
 
-async function colorDistribution(wmsUrl, layerName, bbox, ring, west, east, south, north, res = 256) {
-  const url =
-    `${wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
-    `&FORMAT=image/png&TRANSPARENT=true` +
-    `&LAYERS=${encodeURIComponent(layerName)}&STYLES=` +
-    `&SRS=EPSG:4326&BBOX=${bbox}&WIDTH=${res}&HEIGHT=${res}`;
-  try {
-    // Fetch as blob → object URL to avoid canvas CORS taint
-    const fetchRes = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!fetchRes.ok) return [];
-    const blob = await fetchRes.blob();
-    const objUrl = URL.createObjectURL(blob);
-    let img;
-    try { img = await loadImage(objUrl); }
-    finally { URL.revokeObjectURL(objUrl); }
-    const c = document.createElement("canvas");
-    c.width = c.height = res;
-    const ctx = c.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-    const pixels = ctx.getImageData(0, 0, res, res).data;
+async function fetchFernStack(svcs, bbox, ring, west, east, south, north, res = 256) {
+  // Build polygon mask once
+  const mc = document.createElement("canvas");
+  mc.width = mc.height = res;
+  const mCtx = mc.getContext("2d");
+  mCtx.fillStyle = "#fff";
+  mCtx.beginPath();
+  for (let i = 0; i < ring.length; i++) {
+    const x = (ring[i][0] - west) / (east - west) * res;
+    const y = (north - ring[i][1]) / (north - south) * res;
+    i === 0 ? mCtx.moveTo(x, y) : mCtx.lineTo(x, y);
+  }
+  mCtx.closePath();
+  mCtx.fill();
+  const mask = mCtx.getImageData(0, 0, res, res).data;
 
-    const mc = document.createElement("canvas");
-    mc.width = mc.height = res;
-    const mCtx = mc.getContext("2d");
-    mCtx.fillStyle = "#fff";
-    mCtx.beginPath();
-    for (let i = 0; i < ring.length; i++) {
-      const x = (ring[i][0] - west) / (east - west) * res;
-      const y = (north - ring[i][1]) / (north - south) * res;
-      i === 0 ? mCtx.moveTo(x, y) : mCtx.lineTo(x, y);
+  // Fetch all layers at identical BBOX/SIZE → pixels are co-registered
+  const pixArrays = await Promise.all(svcs.map(async svc => {
+    const url =
+      `${svc.wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
+      `&FORMAT=image/png&TRANSPARENT=true` +
+      `&LAYERS=${encodeURIComponent(svc.layers[0].name)}&STYLES=` +
+      `&SRS=EPSG:4326&BBOX=${bbox}&WIDTH=${res}&HEIGHT=${res}`;
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!r.ok) return null;
+      const blob = await r.blob();
+      const img  = await createImageBitmap(blob);
+      const c = document.createElement("canvas");
+      c.width = c.height = res;
+      c.getContext("2d").drawImage(img, 0, 0);
+      return c.getContext("2d").getImageData(0, 0, res, res).data;
+    } catch { return null; }
+  }));
+
+  // Build per-pixel rows for pixels inside the polygon mask
+  const rows = [];
+  let maskedTotal = 0;
+  for (let i = 0; i < mask.length; i += 4) {
+    if (mask[i + 3] < 128) continue;
+    maskedTotal++;
+    const row = { _index: maskedTotal - 1 };
+    for (let si = 0; si < svcs.length; si++) {
+      const px = pixArrays[si];
+      if (!px || px[i + 3] < 128) { row[svcs[si].id] = null; continue; } // transparent = no data
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const rr = Math.min(240, (r + 8) >> 4 << 4);
+      const gg = Math.min(240, (g + 8) >> 4 << 4);
+      const bb = Math.min(240, (b + 8) >> 4 << 4);
+      row[svcs[si].id] = `#${rr.toString(16).padStart(2,"0")}${gg.toString(16).padStart(2,"0")}${bb.toString(16).padStart(2,"0")}`;
+
     }
-    mCtx.closePath();
-    mCtx.fill();
-    const mask = mc.getContext("2d").getImageData(0, 0, res, res).data;
-
-    const counts = {};
-    let total = 0;
-    for (let i = 0; i < mask.length; i += 4) {
-      if (mask[i + 3] < 128 || pixels[i + 3] < 128) continue;
-      const r = Math.round(pixels[i]   / 16) * 16;
-      const g = Math.round(pixels[i+1] / 16) * 16;
-      const b = Math.round(pixels[i+2] / 16) * 16;
-      const hex = `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
-      counts[hex] = (counts[hex] ?? 0) + 1;
-      total++;
-    }
-    if (!total) return [];
-    return Object.entries(counts)
-      .map(([hex, n]) => ({ hex, pct: Math.round(n / total * 100) }))
-      .filter(s => s.pct >= 1)
-      .sort((a, b) => b.pct - a.pct);
-  } catch { return []; }
+    rows.push(row);
+  }
+  rows._total = maskedTotal; // total parcel pixels (for % of parcel calculations)
+  return rows;
 }
 
-function loadImage(url, timeoutMs = 12000) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const timer = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-    img.onload  = () => { clearTimeout(timer); resolve(img); };
-    img.onerror = () => { clearTimeout(timer); reject(new Error("load error")); };
-    img.src = url;
+function stackToFernData(rows, svcs) {
+  const total = rows._total ?? rows.length;
+  if (!total) return svcs.map(svc => ({ label: svc.label, id: svc.id, type: "pie", segments: [] }));
+
+  // Identify which rows have forest cover (Waldbedeckung layer)
+  const wbSvc = svcs.find(s => s.id === "waldbedeckung");
+  const forestRows = wbSvc?.colorLegend
+    ? rows.filter(row => {
+        const hex = row[wbSvc.id];
+        return hex && nearestLegendEntry(hex, wbSvc.colorLegend) !== null;
+      })
+    : rows;
+
+  return svcs.map(svc => {
+    // Binary layers (Waldbedeckung, Waldbestockung): % of whole parcel
+    const useParcel = svc.colorLegend?.countParcel;
+    const activeRows = useParcel ? rows : forestRows;
+    const denom      = useParcel ? total : forestRows.length;
+
+    const counts = {};
+    for (const row of activeRows) {
+      const hex = row[svc.id];
+      if (hex) counts[hex] = (counts[hex] ?? 0) + 1;
+    }
+
+    if (!denom) return { label: svc.label, id: svc.id, type: "pie", segments: [] };
+
+    const rawColors = Object.entries(counts)
+      .map(([hex, n]) => ({ hex, pct: Math.round(n / denom * 100) }))
+      .filter(s => s.pct >= 1);
+
+    const matched = svc.colorLegend
+      ? matchToLegend(rawColors, svc.colorLegend)
+      : { type: "pie", segments: rawColors.sort((a, b) => b.pct - a.pct) };
+
+    return { label: svc.label, id: svc.id, ...matched };
   });
+}
+
+function nearestLegendEntry(hex, legend) {
+  if (!legend?.entries?.length) return null;
+  const rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const dist = ([r1,g1,b1],[r2,g2,b2]) => Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+  const pixRgb = rgb(hex);
+  let best = null, bestDist = Infinity;
+  for (const e of legend.entries) {
+    const d = dist(pixRgb, rgb(e.hex));
+    if (d < bestDist) { bestDist = d; best = e; }
+  }
+  return bestDist < 100 ? best : null;
 }
 
 // ── Legend color matching ─────────────────────────────────────────────────────
