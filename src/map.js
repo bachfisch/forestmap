@@ -126,7 +126,12 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     showLoading({ lat, lng });
-    const entries = await queryAtPoint(lng, lat, viewport);
-    showResults(entries);
+    try {
+      const entries = await queryAtPoint(lng, lat, viewport);
+      showResults(entries);
+    } catch (err) {
+      console.error("queryAtPoint failed:", err);
+      showResults([]);
+    }
   });
 });
