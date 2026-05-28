@@ -28,9 +28,9 @@ export async function generateReport(parcelResult, w, onStatus = () => {}) {
       gfiCoverage(svc.wmsUrl, svc.layers[0].name, gridPts)
         .then(pct => ({ label: svc.label, pct }))
     )).then(r => { onStatus("Waldbiotope werden abgefragt…"); return r; }),
-    gridGfi(BIOTOPE_SVC.wmsUrl,  BIOTOPE_SVC.layers[0].name,  gridPts)
+    gfiFromGetMap(BIOTOPE_SVC, bbox, ring, west, east, south, north, { dedup: "OBJECTID" })
       .then(r => { onStatus("Standortskarte wird abgefragt…"); return r; }),
-    gridGfi(STANDORT_SVC.wmsUrl, STANDORT_SVC.layers[0].name, gridPts)
+    gfiFromGetMap(STANDORT_SVC, bbox, ring, west, east, south, north, {})
       .then(r => { onStatus("Report wird aufgebaut…"); return r; }),
     fetchFernStack(FERN_SVCS, bbox, ring, west, east, south, north)
       .then(r => { onStatus("Waldfunktionen werden abgefragt…"); return r; }),
@@ -69,6 +69,69 @@ async function gfiCoverage(wmsUrl, layerName, gridPts) {
 async function gridGfi(wmsUrl, layerName, gridPts) {
   const results = await Promise.all(gridPts.map(p => pointGfi(wmsUrl, layerName, p.lng, p.lat)));
   return results.filter(Boolean);
+}
+
+// Query GFI only at pixels where the layer actually has data (found via GetMap).
+// Much more reliable than random grid sampling for sparse polygon layers.
+async function gfiFromGetMap(svc, bbox, ring, west, east, south, north, { dedup, maxQueries = 25, res = 256 } = {}) {
+  const mapUrl =
+    `${svc.wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
+    `&FORMAT=image/png&TRANSPARENT=true` +
+    `&LAYERS=${encodeURIComponent(svc.layers[0].name)}&STYLES=` +
+    `&SRS=EPSG:4326&BBOX=${bbox}&WIDTH=${res}&HEIGHT=${res}`;
+
+  let pixData;
+  try {
+    const r = await fetch(mapUrl, { signal: AbortSignal.timeout(12000) });
+    if (!r.ok) return [];
+    const blob = await r.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image(); el.onload = () => resolve(el); el.onerror = reject; el.src = objUrl;
+    }).finally(() => URL.revokeObjectURL(objUrl));
+    const c = document.createElement("canvas"); c.width = c.height = res;
+    c.getContext("2d").drawImage(img, 0, 0);
+    pixData = c.getContext("2d").getImageData(0, 0, res, res).data;
+  } catch { return []; }
+
+  // Collect candidate pixel locations inside the parcel mask that have layer data
+  const mc = document.createElement("canvas"); mc.width = mc.height = res;
+  const mCtx = mc.getContext("2d"); mCtx.fillStyle = "#fff"; mCtx.beginPath();
+  for (let i = 0; i < ring.length; i++) {
+    const x = (ring[i][0] - west) / (east - west) * res;
+    const y = (north - ring[i][1]) / (north - south) * res;
+    i === 0 ? mCtx.moveTo(x, y) : mCtx.lineTo(x, y);
+  }
+  mCtx.closePath(); mCtx.fill();
+  const mask = mc.getContext("2d").getImageData(0, 0, res, res).data;
+
+  const candidates = [];
+  for (let i = 0; i < mask.length; i += 4) {
+    if (mask[i + 3] < 128 || pixData[i + 3] < 128) continue;
+    const px = (i / 4) % res, py = Math.floor((i / 4) / res);
+    candidates.push({
+      lon: west  + (px + 0.5) / res * (east - west),
+      lat: north - (py + 0.5) / res * (north - south),
+    });
+  }
+  if (!candidates.length) return [];
+
+  // Sample evenly across candidates to stay within maxQueries
+  const step = Math.max(1, Math.floor(candidates.length / maxQueries));
+  const sample = candidates.filter((_, i) => i % step === 0).slice(0, maxQueries);
+
+  const results = await Promise.all(
+    sample.map(({ lon, lat }) => pointGfi(svc.wmsUrl, svc.layers[0].name, lon, lat))
+  );
+
+  const seen = new Set();
+  return results.filter(r => {
+    if (!r) return false;
+    const key = dedup ? (r[dedup] ?? JSON.stringify(r)) : JSON.stringify(r);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function pointGfi(wmsUrl, layerName, lng, lat) {
@@ -135,14 +198,23 @@ async function fetchFernStack(svcs, bbox, ring, west, east, south, north, res = 
       `&SRS=EPSG:4326&BBOX=${bbox}&WIDTH=${res}&HEIGHT=${res}`;
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!r.ok) return null;
+      if (!r.ok) { console.warn(`[fern] ${svc.id}: HTTP ${r.status}`); return null; }
       const blob = await r.blob();
-      const img  = await createImageBitmap(blob);
+      const objUrl = URL.createObjectURL(blob);
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = objUrl;
+      }).finally(() => URL.revokeObjectURL(objUrl));
       const c = document.createElement("canvas");
       c.width = c.height = res;
       c.getContext("2d").drawImage(img, 0, 0);
-      return c.getContext("2d").getImageData(0, 0, res, res).data;
-    } catch { return null; }
+      const pixels = c.getContext("2d").getImageData(0, 0, res, res).data;
+      const opaque = pixels.reduce((n, _, i) => i % 4 === 3 && pixels[i] >= 128 ? n + 1 : n, 0);
+      console.log(`[fern] ${svc.id}: ${opaque} opaque pixels`);
+      return pixels;
+    } catch (e) { console.error(`[fern] ${svc.id}: ${e.message}`); return null; }
   }));
 
   // Build per-pixel rows for pixels inside the polygon mask
@@ -172,27 +244,17 @@ function stackToFernData(rows, svcs) {
   const total = rows._total ?? rows.length;
   if (!total) return svcs.map(svc => ({ label: svc.label, id: svc.id, type: "pie", segments: [] }));
 
-  // Identify which rows have forest cover (Waldbedeckung layer)
-  const wbSvc = svcs.find(s => s.id === "waldbedeckung");
-  const forestRows = wbSvc?.colorLegend
-    ? rows.filter(row => {
-        const hex = row[wbSvc.id];
-        return hex && nearestLegendEntry(hex, wbSvc.colorLegend) !== null;
-      })
-    : rows;
-
   return svcs.map(svc => {
-    // Binary layers (Waldbedeckung, Waldbestockung): % of whole parcel
-    const useParcel = svc.colorLegend?.countParcel;
-    const activeRows = useParcel ? rows : forestRows;
-    const denom      = useParcel ? total : forestRows.length;
-
     const counts = {};
-    for (const row of activeRows) {
+    let coloredTotal = 0;
+    for (const row of rows) {
       const hex = row[svc.id];
-      if (hex) counts[hex] = (counts[hex] ?? 0) + 1;
+      if (hex) { counts[hex] = (counts[hex] ?? 0) + 1; coloredTotal++; }
     }
 
+    // countParcel layers (Waldbedeckung, Waldbestockung): denominator = all parcel pixels
+    // all other layers: denominator = pixels where THIS layer has data (= % of layer coverage)
+    const denom = svc.colorLegend?.countParcel ? total : coloredTotal;
     if (!denom) return { label: svc.label, id: svc.id, type: "pie", segments: [] };
 
     const rawColors = Object.entries(counts)
@@ -207,18 +269,6 @@ function stackToFernData(rows, svcs) {
   });
 }
 
-function nearestLegendEntry(hex, legend) {
-  if (!legend?.entries?.length) return null;
-  const rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
-  const dist = ([r1,g1,b1],[r2,g2,b2]) => Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
-  const pixRgb = rgb(hex);
-  let best = null, bestDist = Infinity;
-  for (const e of legend.entries) {
-    const d = dist(pixRgb, rgb(e.hex));
-    if (d < bestDist) { bestDist = d; best = e; }
-  }
-  return bestDist < 100 ? best : null;
-}
 
 // ── Legend color matching ─────────────────────────────────────────────────────
 
