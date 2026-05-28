@@ -2,7 +2,7 @@ import { SERVICES } from "../services.js";
 import { getVisible } from "./state.js";
 
 async function fetchGfi(service, layer, lng, lat) {
-  const d = 0.0005;
+  const d = service.gfiBboxDeg ?? 0.0005;
   const version = "1.1.1";
   const url =
     `${service.wmsUrl}` +

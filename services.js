@@ -768,6 +768,7 @@ export const SERVICES = [
       { name: "Habitatbaumgruppen", label: "Habitatbaumgruppen" },
     ],
     featureInfoType: "geojson",
+    gfiBboxDeg: 0.004,
     chartComponent: "FeatureTable",
     updateInterval: "monthly",
     license: "open-data",
