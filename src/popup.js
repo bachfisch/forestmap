@@ -102,7 +102,17 @@ function renderEntry(entry) {
 
   const body = document.createElement("div");
   body.className = "popup-entry-body";
-  body.append(ChartFn(context));
+  let chartEl;
+  try {
+    chartEl = ChartFn(context);
+  } catch (err) {
+    console.error(`Chart render error [${service.id}]:`, err);
+    const errDiv = document.createElement("p");
+    errDiv.className = "chart-empty";
+    errDiv.textContent = "Darstellung nicht verfügbar.";
+    chartEl = errDiv;
+  }
+  body.append(chartEl);
 
   if (service.category === "flurstücke" && firstResult.geometry) {
     const btn = document.createElement("button");

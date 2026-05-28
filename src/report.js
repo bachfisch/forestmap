@@ -30,7 +30,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}) {
     )).then(r => { onStatus("Waldbiotope werden abgefragt…"); return r; }),
     gfiFromGetMap(BIOTOPE_SVC, bbox, ring, west, east, south, north, { dedup: "OBJECTID" })
       .then(r => { onStatus("Standortskarte wird abgefragt…"); return r; }),
-    gfiFromGetMap(STANDORT_SVC, bbox, ring, west, east, south, north, {})
+    gridGfi(STANDORT_SVC.wmsUrl, STANDORT_SVC.layers[0].name, gridPts)
       .then(r => { onStatus("Report wird aufgebaut…"); return r; }),
     fetchFernStack(FERN_SVCS, bbox, ring, west, east, south, north)
       .then(r => { onStatus("Waldfunktionen werden abgefragt…"); return r; }),

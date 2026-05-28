@@ -1,15 +1,15 @@
 import { SERVICES } from "../services.js";
 import { getVisible } from "./state.js";
 
-async function fetchGfi(service, layer, viewport) {
+async function fetchGfi(service, layer, lng, lat) {
+  const d = 0.0005;
   const version = "1.1.1";
   const url =
     `${service.wmsUrl}` +
     `?SERVICE=WMS&VERSION=${version}&REQUEST=GetFeatureInfo` +
     `&FORMAT=image/png&TRANSPARENT=true` +
-    `&SRS=EPSG:4326&BBOX=${viewport.bbox}` +
-    `&WIDTH=${viewport.width}&HEIGHT=${viewport.height}` +
-    `&X=${viewport.x}&Y=${viewport.y}` +
+    `&SRS=EPSG:4326&BBOX=${lng-d},${lat-d},${lng+d},${lat+d}` +
+    `&WIDTH=256&HEIGHT=256&X=128&Y=128` +
     `&LAYERS=${encodeURIComponent(layer.name)}` +
     `&QUERY_LAYERS=${encodeURIComponent(layer.name)}` +
     `&INFO_FORMAT=application/json&FEATURE_COUNT=1`;
@@ -169,7 +169,7 @@ async function fetchPixelColor(service, layer, lng, lat) {
   }
 }
 
-export async function queryAtPoint(lng, lat, viewport) {
+export async function queryAtPoint(lng, lat) {
   const visible = getVisible();
 
   const activeServices = SERVICES.filter(s =>
@@ -220,7 +220,7 @@ export async function queryAtPoint(lng, lat, viewport) {
           },
         };
       }
-      const result = await fetchGfi(t.service, t.layer, viewport);
+      const result = await fetchGfi(t.service, t.layer, lng, lat);
       return { ...t, result: { ...result, pixelColor: null } };
     })
   );

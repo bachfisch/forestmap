@@ -5,6 +5,7 @@ import { initSidebar }  from "./sidebar.js";
 import { initPopup, showLoading, showResults } from "./popup.js";
 import { queryAtPoint } from "./fetcher.js";
 import { registerHighlight } from "./highlight.js";
+import { initLegend } from "./legend.js";
 
 const maplibregl = window.maplibregl;
 
@@ -72,6 +73,7 @@ function syncVisibility(map) {
 document.addEventListener("DOMContentLoaded", () => {
   initSidebar();
   initPopup();
+  initLegend();
 
   const map = new maplibregl.Map({
     container: "map",
@@ -114,20 +116,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   map.on("click", async e => {
     const { lng, lat } = e.lngLat;
-    const bounds = map.getBounds();
-    const container = map.getContainer();
-
-    const viewport = {
-      bbox: `${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`,
-      width:  container.clientWidth,
-      height: container.clientHeight,
-      x: Math.round(e.point.x),
-      y: Math.round(e.point.y),
-    };
 
     showLoading({ lat, lng });
     try {
-      const entries = await queryAtPoint(lng, lat, viewport);
+      const entries = await queryAtPoint(lng, lat);
       showResults(entries);
     } catch (err) {
       console.error("queryAtPoint failed:", err);

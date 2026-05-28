@@ -103,7 +103,7 @@ export function render({ results, serviceConfig }) {
   // Convert to absolute: absolute = base * (1 + relChange)
   if (serviceConfig.scenarioRelative) {
     const bySpecies = groupBySpecies(points);
-    for (const pts of bySpecies.values()) {
+    for (const { points: pts } of bySpecies.values()) {
       const base = pts.find(p => p.groupOrder === 0)?.value ?? null;
       if (base === null) continue;
       for (const p of pts) {
@@ -185,37 +185,43 @@ function renderBars(points, yDomain) {
 
   const timePeriodMap = new Map(points.map(p => [p.barLabel, p.timePeriod]));
 
-  const chart = Plot.plot({
-    width: 272,
-    height: 140,
-    marginBottom: 40,
-    marginLeft: 44,
-    marginTop: 8,
-    marginRight: 12,
-    x: {
-      domain: points.map(p => p.barLabel),
-      tickFormat: d => timePeriodMap.get(d) ?? d,
-      tickRotate: -35,
-      label: null,
-      tickSize: 0,
-    },
-    y: { label: null, grid: true, tickCount: 4, domain: yDomain },
-    marks: [
-      Plot.barY(points.filter(p => Number.isFinite(p.value)), {
-        x: "barLabel",
-        y: "value",
-        fill: d => d.color,
-        title: d => `${d.timePeriod}: ${d.value?.toFixed(2)}`,
-      }),
-      Plot.ruleY([0], { stroke: "var(--border)" }),
-    ],
-    style: {
-      fontFamily: "system-ui, -apple-system, sans-serif",
-      fontSize: "10px",
-      background: "transparent",
-      color: "var(--text)",
-    },
-  });
+  let chart;
+  try {
+    chart = Plot.plot({
+      width: 272,
+      height: 140,
+      marginBottom: 40,
+      marginLeft: 44,
+      marginTop: 8,
+      marginRight: 12,
+      x: {
+        domain: points.map(p => p.barLabel),
+        tickFormat: d => timePeriodMap.get(d) ?? d,
+        tickRotate: -35,
+        label: null,
+        tickSize: 0,
+      },
+      y: { label: null, grid: true, tickCount: 4, domain: yDomain },
+      marks: [
+        Plot.barY(points.filter(p => Number.isFinite(p.value)), {
+          x: "barLabel",
+          y: "value",
+          fill: d => d.color,
+          title: d => `${d.timePeriod}: ${d.value?.toFixed(2)}`,
+        }),
+        Plot.ruleY([0], { stroke: "var(--border)" }),
+      ],
+      style: {
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontSize: "10px",
+        background: "transparent",
+        color: "var(--text)",
+      },
+    });
+  } catch (err) {
+    console.error("ScenarioBar Plot.plot error:", err);
+    return fallbackBars(points);
+  }
 
   const container = document.createElement("div");
   container.append(chart);
