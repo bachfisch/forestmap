@@ -22,33 +22,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Gesetzlicher Bodenschutzwald & Lawinenschutz",
     abstract: "Gesetzliche Bodenschutzwälder schützen gemäß § 30 LWaldG den Boden vor Erosion, Austrocknung und Verarmung. Die Lawinenschutzfunktion weist Wälder aus, die Siedlungen und Verkehrswege vor Schneebewegungen sichern.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Bodenschutzwald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Bodenschutzwald",
     layers: [
       { name: "bodenschutzwald", label: "Bodenschutzwald & Lawinenschutz", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
-    minZoom: 12,
-  },
-
-  {
-    id: "erholungswald-stufen",
-    category: "waldfunktionen",
-    label: "Erholungswald Stufen 1 und 2",
-    abstract: "Erholungswälder mit besonderer Bedeutung für die Naherholung. Stufe 1: sehr hoher Erholungsdruck (Verdichtungsräume), Stufe 2: erhöhter Erholungsbedarf.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Erholungswald_Stufe1und2`,
-    wmsVersion: "1.3.0",
-    layers: [
-      { name: "erholungswald", label: "Erholungswald Stufen 1 und 2", defaultVisible: false },
-    ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
-    updateInterval: "static",
-    license: "fva-nutzungsbedingungen",
-    minZoom: 12,
   },
 
   {
@@ -56,16 +36,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Gesetzlicher Erholungswald",
     abstract: "Nach § 33 LWaldG durch Rechtsverordnung ausgewiesene Erholungswälder. Höchste Schutz- und Pflegestufe.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Gesetzlicher_Erholungswald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Gesetzlicher_Erholungswald",
     layers: [
-      { name: "gesetzlicher_erholungswald", label: "Gesetzlicher Erholungswald", defaultVisible: false },
+      { name: "erholungswald-gesetzlich", label: "Gesetzlicher Erholungswald", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
-    minZoom: 12,
   },
 
   {
@@ -73,16 +50,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Immissionsschutzwald",
     abstract: "Wälder die Siedlungen, Erholungsgebiete oder landwirtschaftliche Nutzflächen vor schädlichen Luftverunreinigungen schützen.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Immissionsschutzwald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Immissionsschutzwald",
     layers: [
       { name: "immissionsschutzwald", label: "Immissionsschutzwald", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
-    minZoom: 12,
   },
 
   {
@@ -90,16 +64,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Klimaschutzwald",
     abstract: "Wälder mit besonderer Bedeutung für den lokalen und regionalen Klimaschutz: Kaltluftproduktion, Frischluftschneisen, Temperaturausgleich.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Klimaschutzwald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Klimaschutzwald",
     layers: [
       { name: "klimaschutzwald", label: "Klimaschutzwald", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "open-data",
-    minZoom: 12,
   },
 
   {
@@ -107,16 +78,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Sichtschutzwald",
     abstract: "Wälder die störende Anlagen oder Landschaftseingriffe visuell abschirmen und damit das Landschaftsbild schützen.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Sichtschutzwald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Sichtschutzwald",
     layers: [
       { name: "sichtschutzwald", label: "Sichtschutzwald", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
-    minZoom: 12,
   },
 
   {
@@ -124,33 +92,13 @@ export const SERVICES = [
     category: "waldfunktionen",
     label: "Gesetzlicher Schutzwald gegen schädliche Umwelteinwirkungen",
     abstract: "Per Rechtsverordnung ausgewiesene Schutzwälder gemäß § 30 LWaldG, die Siedlungen vor schädlichen Einwirkungen schützen.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Gesetzlicher_Umweltschutzwald`,
-    wmsVersion: "1.3.0",
+    wfsUrl: "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Bodennutzung_Umweltschutzwald",
     layers: [
       { name: "umweltschutzwald", label: "Umweltschutzwald", defaultVisible: false },
     ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
+    featureInfoType: "none",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
-    minZoom: 12,
-  },
-
-  {
-    id: "wasserschutzwald",
-    category: "waldfunktionen",
-    label: "Sonstiger Wasserschutzwald",
-    abstract: "Wälder in Wasserschutz- und Wassereinzugsgebieten mit Funktion für Grundwasserneubildung, Quellschutz und Hochwasserregulierung.",
-    wmsUrl: `${OWS_BASE}/WMS_FVA_Wasserschutzwald`,
-    wmsVersion: "1.3.0",
-    layers: [
-      { name: "sonstiger_wasserschutzwald", label: "Wasserschutzwald", defaultVisible: false },
-    ],
-    featureInfoType: "value-only",
-    chartComponent: "RasterValue",
-    updateInterval: "static",
-    license: "fva-nutzungsbedingungen",
-    minZoom: 12,
   },
 
   // ─── WALDBIOTOPE ───────────────────────────────────────────────────────────

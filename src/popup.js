@@ -4,6 +4,12 @@ import { render as ScenarioBar }      from "./charts/ScenarioBar.js";
 import { render as BuchdruckerChart } from "./charts/BuchdruckerChart.js";
 import { render as BodenfeuchteChart} from "./charts/BodenfeuchteChart.js";
 import { getFilter, getReportMode } from "./state.js";
+import { SERVICES, CATEGORIES } from "../services.js";
+
+// All reportable services (exclude the parcel layer itself)
+const REPORT_SVCS = SERVICES.filter(s => s.category !== "flurstücke" && (s.featureInfoType !== "none" || s.wfsUrl));
+
+const reportSelected = new Set(["laub-nadelwaldkarte", "waldhoehen"]);
 import { setHighlight, clearHighlight } from "./highlight.js";
 
 const ChartRegistry = {
@@ -123,7 +129,7 @@ function renderEntry(entry) {
     statusEl.className = "report-status";
 
     btn.addEventListener("click", () => triggerReport(firstResult, btn, statusEl));
-    body.append(btn, statusEl);
+    body.append(btn, buildReportDropdown(), statusEl);
   }
 
   section.append(header, body);
@@ -188,20 +194,111 @@ function defaultChart(service) {
   return RasterValue;
 }
 
+function buildReportDropdown() {
+  const details = document.createElement("details");
+  details.className = "report-options";
+
+  const summary = document.createElement("summary");
+  summary.className = "report-options-summary";
+  summary.textContent = "Layer-Auswahl";
+  details.append(summary);
+
+  const body = document.createElement("div");
+  body.className = "report-options-body";
+
+  for (const cat of CATEGORIES) {
+    if (cat.id === "flurstücke") continue;
+    const svcs = REPORT_SVCS.filter(s => s.category === cat.id);
+    if (!svcs.length) continue;
+    if (svcs.length === 1) {
+      body.append(buildReportItem(cat.label, svcs[0].id));
+    } else {
+      body.append(buildReportGroup(cat.label, svcs));
+    }
+  }
+
+  details.append(body);
+  return details;
+}
+
+function buildReportGroup(label, svcs) {
+  const wrap = document.createElement("div");
+  wrap.className = "report-options-group";
+
+  const parentLabel = document.createElement("label");
+  parentLabel.className = "report-options-parent";
+  const parentCb = document.createElement("input");
+  parentCb.type = "checkbox";
+  const allChecked = svcs.every(s => reportSelected.has(s.id));
+  const someChecked = svcs.some(s => reportSelected.has(s.id));
+  parentCb.checked = allChecked;
+  parentCb.indeterminate = !allChecked && someChecked;
+  parentLabel.append(parentCb, document.createTextNode(" " + label));
+  wrap.append(parentLabel);
+
+  const children = document.createElement("div");
+  children.className = "report-options-children";
+  for (const svc of svcs) {
+    children.append(buildReportItem(svc.label, svc.id, true, parentCb, children));
+  }
+  wrap.append(children);
+
+  parentCb.addEventListener("change", () => {
+    for (const cb of children.querySelectorAll("input[type=checkbox]")) {
+      cb.checked = parentCb.checked;
+      if (parentCb.checked) reportSelected.add(cb.dataset.id);
+      else reportSelected.delete(cb.dataset.id);
+    }
+    parentCb.indeterminate = false;
+  });
+
+  return wrap;
+}
+
+function buildReportItem(label, id, isChild = false, parentCb = null, siblings = null) {
+  const l = document.createElement("label");
+  l.className = isChild ? "report-options-child" : "report-options-item";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.dataset.id = id;
+  cb.checked = reportSelected.has(id);
+  cb.addEventListener("change", () => {
+    if (cb.checked) reportSelected.add(id);
+    else reportSelected.delete(id);
+    if (parentCb && siblings) {
+      const all = [...siblings.querySelectorAll("input[type=checkbox]")];
+      const c = all.filter(x => x.checked).length;
+      parentCb.checked = c === all.length;
+      parentCb.indeterminate = c > 0 && c < all.length;
+    }
+  });
+  l.append(cb, document.createTextNode(" " + label));
+  return l;
+}
+
 async function triggerReport(parcelResult, btn, statusEl) {
   btn.textContent = "Wird erstellt…";
   btn.disabled = true;
 
+  // Open window immediately — before any async work
   const w = window.open("", "_blank");
   if (!w) {
     btn.textContent = "Report erstellen";
     btn.disabled = false;
     return;
   }
-  w.document.write(`<p style="font-family:system-ui;padding:24px;color:#666">Wird geladen…</p>`);
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Report wird erstellt…</title>
+    <style>body{font-family:system-ui;padding:40px;color:#888780;}
+    .dot{animation:pulse 1.2s ease-in-out infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}</style></head>
+    <body><p>Report wird erstellt<span class="dot">…</span></p></body></html>`);
+  w.document.close();
+  window.blur();
+  w.focus();
 
   const { generateReport } = await import("./report.js");
-  await generateReport(parcelResult, w, msg => { statusEl.textContent = msg; });
+  await generateReport(parcelResult, w, msg => { statusEl.textContent = msg; }, new Set(reportSelected));
 
   statusEl.textContent = "";
   btn.textContent = "Report erstellen";

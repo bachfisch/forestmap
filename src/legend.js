@@ -15,7 +15,7 @@ function getActiveLegends() {
 
     if (svc.colorLegend) {
       result.push({ label: svc.label, type: "color", legend: svc.colorLegend });
-    } else if (svc.featureInfoType === "value-only") {
+    } else if (svc.featureInfoType === "value-only" && svc.wmsUrl) {
       const firstLayer = visibleLayers[0].name.split(",")[0];
       const version = svc.wmsVersion ?? "1.3.0";
       const url = `${svc.wmsUrl}?SERVICE=WMS&VERSION=${version}&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(firstLayer)}`;

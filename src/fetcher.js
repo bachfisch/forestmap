@@ -1,5 +1,6 @@
 import { SERVICES } from "../services.js";
 import { getVisible } from "./state.js";
+import { fetchWfsPoint } from "./wfs.js";
 
 async function fetchGfi(service, layer, lng, lat) {
   const d = service.gfiBboxDeg ?? 0.0005;
@@ -189,6 +190,9 @@ export async function queryAtPoint(lng, lat) {
     } else if (cat === "klima" || cat === "dwd") {
       for (const l of svc.layers)
         tasks.push({ kind: "klima", service: svc, layer: l });
+    } else if (cat === "waldfunktionen" && svc.wfsUrl && !svc.wmsUrl) {
+      if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
+        tasks.push({ kind: "waldfunk-wfs", service: svc, layer: svc.layers[0] });
     } else if (cat === "flurstücke" && svc.wfsUrl) {
       if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "wfs", service: svc, layer: svc.layers[0] });
@@ -203,6 +207,10 @@ export async function queryAtPoint(lng, lat) {
       if (t.kind === "fern") {
         const color = await fetchPixelColor(t.service, t.layer, lng, lat);
         return { ...t, result: { layer: t.layer, value: color, properties: null, pixelColor: null } };
+      }
+      if (t.kind === "waldfunk-wfs") {
+        const hit = await fetchWfsPoint(t.service.wfsUrl, lng, lat);
+        return { ...t, result: { layer: t.layer, value: hit ? "Vorhanden" : null, properties: hit ? { Waldfunktion: t.service.label } : null } };
       }
       if (t.kind === "wfs") {
         const parsed = await fetchWfs(t.service, lng, lat);
@@ -247,6 +255,11 @@ export async function queryAtPoint(lng, lat) {
     stdMap.get(r.service.id).results.push(r.result);
   }
   entries.push(...stdMap.values());
+
+  // Waldfunktionen WFS — one popup entry per service that has a polygon hit
+  for (const r of settled.filter(r => r.kind === "waldfunk-wfs" && r.result.value !== null)) {
+    entries.push({ kind: "standard", service: r.service, results: [r.result] });
+  }
 
   const wfsMap = new Map();
   for (const r of settled.filter(r => r.kind === "wfs")) {
