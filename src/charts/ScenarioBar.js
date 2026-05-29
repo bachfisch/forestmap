@@ -93,6 +93,9 @@ export function render({ results, serviceConfig }) {
     };
   });
 
+  // Save raw values before scenarioRelative transforms them
+  for (const p of points) p.rawValue = p.value;
+
   const anyValue = points.some(p => p.value !== null);
   if (!anyValue) {
     wrapper.innerHTML = `<p class="chart-empty">Kein Wert an dieser Stelle.</p>`;
@@ -111,6 +114,16 @@ export function render({ results, serviceConfig }) {
           p.value = base * (1 + p.value);
       }
     }
+  }
+
+  // Color bars from colorLegend value ranges when available
+  for (const p of points) {
+    const legend = legendForPoint(serviceConfig, p.layer.name);
+    if (!legend || p.rawValue == null) continue;
+    // Relative layers store fractional change (e.g. −0.12); legend labels use percent (e.g. −12)
+    const valForColor = p.layer.name.startsWith("relative_") ? p.rawValue * 100 : p.rawValue;
+    const c = colorFromLegend(valForColor, legend.entries);
+    if (c) p.color = c;
   }
 
   // Shared y-domain across all species charts for comparability
@@ -226,6 +239,41 @@ function renderBars(points, yDomain) {
   const container = document.createElement("div");
   container.append(chart);
   return container;
+}
+
+// ── Legend-based coloring ─────────────────────────────────────────────────────
+
+function legendForPoint(serviceConfig, layerName) {
+  if (serviceConfig.colorLegend) return serviceConfig.colorLegend;
+  if (serviceConfig.colorLegendAbsolute || serviceConfig.colorLegendRelative) {
+    return layerName.startsWith("relative_")
+      ? serviceConfig.colorLegendRelative
+      : serviceConfig.colorLegendAbsolute;
+  }
+  return null;
+}
+
+function colorFromLegend(value, entries) {
+  if (!entries?.length || value == null || !isFinite(value)) return null;
+
+  // Extract lower bounds from entries[1..] (entry[0] catches everything below)
+  const bounds = entries.slice(1).map(e => {
+    const clean = e.label.replace(/[−–]/g, "-").replace(/,/g, ".");
+    const m = clean.match(/-?\d+(?:\.\d+)?/);
+    return m ? parseFloat(m[0]) : null;
+  });
+
+  if (bounds.some(b => b !== null)) {
+    // Numeric scale: find which range the value falls into
+    for (let i = bounds.length - 1; i >= 0; i--) {
+      if (bounds[i] !== null && value >= bounds[i]) return entries[i + 1].hex;
+    }
+    return entries[0].hex;
+  }
+
+  // Ordinal/categorical scale (no numbers in labels): map value as 1-based class index
+  const idx = Math.max(0, Math.min(Math.round(value) - 1, entries.length - 1));
+  return entries[idx]?.hex ?? null;
 }
 
 function fallbackBars(points) {

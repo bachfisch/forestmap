@@ -13,8 +13,14 @@ function getActiveLegends() {
     const visibleLayers = svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`));
     if (!visibleLayers.length) continue;
 
-    if (svc.colorLegend) {
-      result.push({ label: svc.label, type: "color", legend: svc.colorLegend });
+    let activeLegend = svc.colorLegend;
+    if (!activeLegend && (svc.colorLegendAbsolute || svc.colorLegendRelative)) {
+      const hasRelative = visibleLayers.some(l => l.name.startsWith("relative_"));
+      activeLegend = hasRelative ? svc.colorLegendRelative : svc.colorLegendAbsolute;
+    }
+
+    if (activeLegend) {
+      result.push({ label: svc.label, type: "color", legend: activeLegend });
     } else if (svc.featureInfoType === "value-only" && svc.wmsUrl) {
       const firstLayer = visibleLayers[0].name.split(",")[0];
       const version = svc.wmsVersion ?? "1.3.0";
