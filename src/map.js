@@ -7,8 +7,10 @@ import { queryAtPoint } from "./fetcher.js";
 import { registerHighlight } from "./highlight.js";
 import { initLegend } from "./legend.js";
 import { fetchWfsGeoJson } from "./wfs.js";
+import { queryOverpass, osmToGeoJson } from "./overpass.js";
 
-const WFS_SVCS = SERVICES.filter(s => s.wfsUrl && !s.wmsUrl);
+const WFS_SVCS      = SERVICES.filter(s => s.wfsUrl && !s.wmsUrl);
+const OVERPASS_SVCS = SERVICES.filter(s => s.overpassQuery);
 
 const maplibregl = window.maplibregl;
 
@@ -62,6 +64,45 @@ function syncWfsVisibility(map) {
     const vis = isVisible(svc.id, svc.layers[0].name) ? "visible" : "none";
     if (map.getLayer(`wfs-fill-${svc.id}`)) map.setLayoutProperty(`wfs-fill-${svc.id}`, "visibility", vis);
     if (map.getLayer(`wfs-line-${svc.id}`)) map.setLayoutProperty(`wfs-line-${svc.id}`, "visibility", vis);
+  }
+}
+
+function addOverpassLayer(map, svc) {
+  const srcId = `op-src-${svc.id}`;
+  const fillId = `op-fill-${svc.id}`;
+  const lineId = `op-line-${svc.id}`;
+  const visible = isVisible(svc.id, svc.layers[0].name);
+
+  if (!map.getSource(srcId)) {
+    map.addSource(srcId, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({ id: fillId, type: "fill", source: srcId,
+      layout: { visibility: visible ? "visible" : "none" },
+      paint: { "fill-color": "#2d6a2d", "fill-opacity": 0.4 } });
+    map.addLayer({ id: lineId, type: "line", source: srcId,
+      layout: { visibility: visible ? "visible" : "none" },
+      paint: { "line-color": "#4a9e4a", "line-width": 1.2 } });
+  }
+}
+
+async function refreshOverpassLayer(map, svc) {
+  if (!isVisible(svc.id, svc.layers[0].name)) return;
+  if (svc.minZoom && map.getZoom() < svc.minZoom) {
+    map.getSource(`op-src-${svc.id}`)?.setData({ type: "FeatureCollection", features: [] });
+    return;
+  }
+  const b = map.getBounds();
+  const bbox = `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`;
+  try {
+    const data = await queryOverpass(svc.overpassQuery, bbox);
+    map.getSource(`op-src-${svc.id}`)?.setData(osmToGeoJson(data.elements ?? []));
+  } catch { /* mirror failure – silent */ }
+}
+
+function syncOverpassVisibility(map) {
+  for (const svc of OVERPASS_SVCS) {
+    const vis = isVisible(svc.id, svc.layers[0].name) ? "visible" : "none";
+    if (map.getLayer(`op-fill-${svc.id}`)) map.setLayoutProperty(`op-fill-${svc.id}`, "visibility", vis);
+    if (map.getLayer(`op-line-${svc.id}`)) map.setLayoutProperty(`op-line-${svc.id}`, "visibility", vis);
   }
 }
 
@@ -134,6 +175,10 @@ document.addEventListener("DOMContentLoaded", () => {
       addWfsLayer(map, svc);
     }
 
+    for (const svc of OVERPASS_SVCS) {
+      addOverpassLayer(map, svc);
+    }
+
     map.addSource("highlight", {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
@@ -159,9 +204,16 @@ document.addEventListener("DOMContentLoaded", () => {
       wfsTimer = setTimeout(() => WFS_SVCS.forEach(s => refreshWfsLayer(map, s)), 300);
     };
 
-    onChange(() => { syncVisibility(map); syncWfsVisibility(map); refreshAllWfs(); });
-    map.on("moveend", refreshAllWfs);
+    let opTimer;
+    const refreshAllOverpass = () => {
+      clearTimeout(opTimer);
+      opTimer = setTimeout(() => OVERPASS_SVCS.forEach(s => refreshOverpassLayer(map, s)), 600);
+    };
+
+    onChange(() => { syncVisibility(map); syncWfsVisibility(map); syncOverpassVisibility(map); refreshAllWfs(); refreshAllOverpass(); });
+    map.on("moveend", () => { refreshAllWfs(); refreshAllOverpass(); });
     refreshAllWfs();
+    refreshAllOverpass();
   });
 
   map.on("click", async e => {
@@ -170,6 +222,28 @@ document.addEventListener("DOMContentLoaded", () => {
     showLoading({ lat, lng });
     try {
       const entries = await queryAtPoint(lng, lat);
+
+      for (const svc of OVERPASS_SVCS) {
+        if (!isVisible(svc.id, svc.layers[0].name)) continue;
+        const hits = map.queryRenderedFeatures(e.point, { layers: [`op-fill-${svc.id}`] });
+        if (!hits.length) continue;
+        const feat = hits[0];
+        entries.push({
+          kind: "standard",
+          service: svc,
+          results: [{
+            layer: svc.layers[0],
+            value: feat.properties.name || "Waldfläche",
+            properties: {
+              "Flurstücknummer": feat.properties.name || `OSM ${feat.properties.osm_id}`,
+              "Fläche": "–",
+              "Katasterreferenz": feat.properties.osm_id ? `OSM ID: ${feat.properties.osm_id}` : "–",
+            },
+            geometry: feat.geometry,
+          }],
+        });
+      }
+
       showResults(entries);
     } catch (err) {
       console.error("queryAtPoint failed:", err);

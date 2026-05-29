@@ -11,6 +11,7 @@ export const CATEGORIES = [
   { id: "dwd",            label: "DWD Wetter & Klima",         icon: "☁️" },
   { id: "forstbw",        label: "ForstBW",                    icon: "🌳" },
   { id: "flurstücke",    label: "Flurstücke",                 icon: "📐" },
+  { id: "osm",           label: "OpenStreetMap",              icon: "🗺️" },
 ];
 
 export const SERVICES = [
@@ -915,6 +916,23 @@ export const SERVICES = [
     chartComponent: "FeatureTable",
     updateInterval: "monthly",
     license: "open-data",
+  },
+
+  // ─── OPENSTREETMAP ────────────────────────────────────────────────────────────
+
+  {
+    id: "osm-wald",
+    category: "osm",
+    label: "Wald (OSM)",
+    abstract: "Waldflächen aus OpenStreetMap (landuse=forest und natural=wood). Wird dynamisch für den aktuellen Kartenausschnitt geladen. Ab Zoom 12.",
+    overpassQuery: "(way[landuse=forest];way[natural=wood];relation[landuse=forest];relation[natural=wood];);out geom;",
+    layers: [
+      { name: "osm-wald", label: "Wald (OSM)", defaultVisible: false },
+    ],
+    featureInfoType: "none",
+    updateInterval: "dynamic",
+    license: "open-data",
+    minZoom: 12,
   },
 
   {

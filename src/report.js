@@ -9,7 +9,10 @@ const STANDORT_SVC  = SERVICES.find(s => s.id === "standortskarte");
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function generateReport(parcelResult, w, onStatus = () => {}, selection = null) {
-  const ring = parcelResult.geometry?.coordinates?.[0];
+  const geom = parcelResult.geometry;
+  const ring = geom?.type === "MultiPolygon"
+    ? geom.coordinates?.[0]?.[0]
+    : geom?.coordinates?.[0];
   if (!ring) return;
 
   const lngs = ring.map(c => c[0]);

@@ -120,7 +120,7 @@ function renderEntry(entry) {
   }
   body.append(chartEl);
 
-  if (service.category === "flurstücke" && firstResult.geometry) {
+  if ((service.category === "flurstücke" || service.category === "osm") && firstResult.geometry) {
     const btn = document.createElement("button");
     btn.className = "report-btn";
     btn.textContent = "Report erstellen";
