@@ -1,3 +1,70 @@
+// ── proj4 / EPSG:25832 setup ──────────────────────────────────────────────────
+
+let _proj4ready = false;
+function ensureProj4() {
+  if (_proj4ready || !window.proj4) return;
+  window.proj4.defs("EPSG:25832", "+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs");
+  _proj4ready = true;
+}
+
+function toUtm32n(lng, lat) {
+  ensureProj4();
+  return window.proj4("EPSG:4326", "EPSG:25832", [lng, lat]);
+}
+
+// ── Waldbiotope WFS (INSPIRE) ─────────────────────────────────────────────────
+
+const BIOTOPE_WFS = "https://owsproxy.lgl-bw.de/owsproxy/wfs/WFS_INSP_BW_Lebensraeume_Biotope_Waldbiotopkartierung";
+
+export async function fetchBiotopesInBbox(west, south, east, north) {
+  ensureProj4();
+  const [minE, minN] = toUtm32n(west, south);
+  const [maxE, maxN] = toUtm32n(east, north);
+  const url = `${BIOTOPE_WFS}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature` +
+    `&TYPENAMES=hb:Habitat&SRSNAME=EPSG:4326` +
+    `&BBOX=${minE},${minN},${maxE},${maxN},EPSG:25832&COUNT=500`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) return [];
+  return parseBiotopeGml(await res.text());
+}
+
+export async function fetchBiotopeAtPoint(lng, lat) {
+  const d = 0.002;
+  const features = await fetchBiotopesInBbox(lng - d, lat - d, lng + d, lat + d);
+  return features.filter(f => biotopeRingContains(f.ring, lng, lat));
+}
+
+function parseBiotopeGml(gml) {
+  const doc = new DOMParser().parseFromString(gml, "text/xml");
+  const features = [];
+  for (const el of doc.getElementsByTagName("hb:Habitat")) {
+    const name        = el.getElementsByTagName("gml:name")[0]?.textContent?.trim() ?? null;
+    const localName   = el.getElementsByTagName("hb:localName")[0]?.textContent?.trim() ?? null;
+    const refTypeName = el.getElementsByTagName("hb:referenceHabitatTypeName")[0]?.textContent?.trim() ?? null;
+    const posListEl   = el.getElementsByTagName("gml:posList")[0];
+    if (!posListEl) continue;
+    const nums = posListEl.textContent.trim().split(/\s+/).map(Number);
+    const ring = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) ring.push([nums[i], nums[i + 1]]);
+    if (ring.length < 3) continue;
+    features.push({ name, localName, refTypeName, ring });
+  }
+  return features;
+}
+
+function biotopeRingContains(ring, lng, lat) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+      inside = !inside;
+  }
+  return inside;
+}
+
+// ── Waldfunktionen WFS ────────────────────────────────────────────────────────
+
 const WFS_FEATURE_TYPE = "elu:ExistingLandUseObject";
 
 export async function fetchWfsGeoJson(wfsUrl, bbox) {

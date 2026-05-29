@@ -1,4 +1,5 @@
 import { SERVICES, CATEGORIES } from "../services.js";
+import { fetchBiotopesInBbox } from "./wfs.js";
 
 const WALDFUNK_SVCS = SERVICES.filter(s => s.category === "waldfunktionen");
 const FERN_SVCS     = SERVICES.filter(s => s.category === "fernerkundung");
@@ -79,8 +80,8 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
 
   if (hasBiotope) {
     tasks.push(
-      gfiFromGetMap(BIOTOPE_SVC, bbox, ring, west, east, south, north, { dedup: "OBJECTID" })
-        .then(raw => { updateSection(w, "sec-biotope", buildBiotopeHtml(raw)); tick("Waldbiotope"); })
+      fetchBiotopesInBbox(west, south, east, north)
+        .then(features => { updateSection(w, "sec-biotope", buildBiotopeHtml(features)); tick("Waldbiotope"); })
         .catch(() => { updateSection(w, "sec-biotope", sectionFallback("sec-biotope", "Waldbiotope")); tick("Waldbiotope"); })
     );
   }
@@ -188,20 +189,14 @@ function buildWaldfunkHtml(waldfunk) {
   }</section>`;
 }
 
-function buildBiotopeHtml(biotopeRaw) {
-  const seen = new Set();
-  const rows = biotopeRaw.filter(b => {
-    const key = b.OBJECTID ?? b.WBK_NAME ?? JSON.stringify(b);
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
-  }).map(b => `<tr>
-    <td>${esc(b.BiotopName ?? "–")}</td>
-    <td>${esc(b.WBK_NAME ?? "–")}</td>
-    <td>${esc(b.BT_MorphstruBem ?? "–")}</td>
-    <td>${b.URL_INTERNET ? `<a href="${esc(b.URL_INTERNET)}" target="_blank">↗</a>` : "–"}</td>
+function buildBiotopeHtml(features) {
+  const rows = features.map(b => `<tr>
+    <td>${esc(b.name ?? "–")}</td>
+    <td>${esc(b.localName ?? "–")}</td>
+    <td>${esc(b.refTypeName ?? "–")}</td>
   </tr>`).join("");
   return `<section id="sec-biotope"><h2>Waldbiotope</h2>${rows
-    ? `<table><thead><tr><th>BiotopName</th><th>WBK_NAME</th><th>Strukturbemerkung</th><th>Info</th></tr></thead><tbody>${rows}</tbody></table>`
+    ? `<table><thead><tr><th>Name</th><th>Typ</th><th>INSPIRE-Typ</th></tr></thead><tbody>${rows}</tbody></table>`
     : `<p class="none">Keine Waldbiotope im Flurstück gefunden.</p>`
   }</section>`;
 }

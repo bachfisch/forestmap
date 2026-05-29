@@ -1,6 +1,6 @@
 import { SERVICES } from "../services.js";
 import { getVisible } from "./state.js";
-import { fetchWfsPoint } from "./wfs.js";
+import { fetchWfsPoint, fetchBiotopeAtPoint } from "./wfs.js";
 
 async function fetchGfi(service, layer, lng, lat) {
   const d = service.gfiBboxDeg ?? 0.0005;
@@ -190,6 +190,9 @@ export async function queryAtPoint(lng, lat) {
     } else if (cat === "klima" || cat === "dwd") {
       for (const l of svc.layers)
         tasks.push({ kind: "klima", service: svc, layer: l });
+    } else if (cat === "waldbiotope" && svc.wfsUrl) {
+      if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
+        tasks.push({ kind: "biotope-wfs", service: svc, layer: svc.layers[0] });
     } else if (cat === "waldfunktionen" && svc.wfsUrl && !svc.wmsUrl) {
       if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "waldfunk-wfs", service: svc, layer: svc.layers[0] });
@@ -204,6 +207,10 @@ export async function queryAtPoint(lng, lat) {
 
   const settled = await Promise.all(
     tasks.map(async t => {
+      if (t.kind === "biotope-wfs") {
+        const features = await fetchBiotopeAtPoint(lng, lat);
+        return { ...t, features };
+      }
       if (t.kind === "fern") {
         const color = await fetchPixelColor(t.service, t.layer, lng, lat);
         return { ...t, result: { layer: t.layer, value: color, properties: null, pixelColor: null } };
@@ -255,6 +262,21 @@ export async function queryAtPoint(lng, lat) {
     stdMap.get(r.service.id).results.push(r.result);
   }
   entries.push(...stdMap.values());
+
+  // Waldbiotope WFS — one entry per matched biotope polygon
+  for (const r of settled.filter(r => r.kind === "biotope-wfs")) {
+    const features = r.features ?? [];
+    if (!features.length) continue;
+    const results = features.map((f, i) => ({
+      layer: { ...r.layer, label: f.name || `Biotop ${i + 1}` },
+      value: f.name,
+      properties: {
+        "Typ": f.localName,
+        "INSPIRE-Typ": f.refTypeName,
+      },
+    }));
+    entries.push({ kind: "standard", service: r.service, results });
+  }
 
   // Waldfunktionen WFS — one popup entry per service that has a polygon hit
   for (const r of settled.filter(r => r.kind === "waldfunk-wfs" && r.result.value !== null)) {
