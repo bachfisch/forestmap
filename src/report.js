@@ -65,7 +65,6 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
   }
 
   if (activeWaldfunk.length) {
-    const { mask: wfMask, total: wfTotal } = buildParcelMask(ring, west, east, south, north, 512);
     tasks.push(
       Promise.all(activeWaldfunk.map(svc =>
         (svc.wfsUrl
@@ -87,9 +86,11 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
   }
 
   if (hasStandort) {
+    const cLng = (west + east) / 2;
+    const cLat = (south + north) / 2;
     tasks.push(
-      gridGfi(STANDORT_SVC.wmsUrl, STANDORT_SVC.layers[0].name, gridPts)
-        .then(raw => { updateSection(w, "sec-standort", buildStandortHtml(raw)); tick("Standortskarte"); })
+      pointGfi(STANDORT_SVC.wmsUrl, STANDORT_SVC.layers[0].name, cLng, cLat)
+        .then(props => { updateSection(w, "sec-standort", buildStandortHtml(props ? [props] : [])); tick("Standortskarte"); })
         .catch(() => { updateSection(w, "sec-standort", sectionFallback("sec-standort", "Forstliche Standortskarte")); tick("Standortskarte"); })
     );
   }
@@ -146,7 +147,9 @@ ${sections}
 <footer>
   Datenquelle: FVA Baden-Württemberg via OWS-Proxy LGL BW &nbsp;·&nbsp;
   Fernerkundung: Pixelanalyse WMS GetMap &nbsp;·&nbsp;
-  Waldfunktionen/Standort: GFI-Stichprobenraster 15×15
+  Waldbiotope: INSPIRE WFS &nbsp;·&nbsp;
+  Standort: GFI Mittelpunkt &nbsp;·&nbsp;
+  Waldfunktionen: GFI-Stichprobenraster 15×15
 </footer>
 </body>
 </html>`;
@@ -296,53 +299,6 @@ function parseGmlPolygons(gml) {
   return rings;
 }
 
-// ── Waldfunktionen pixel coverage ────────────────────────────────────────────
-
-function buildParcelMask(ring, west, east, south, north, res) {
-  const mc = document.createElement("canvas");
-  mc.width = mc.height = res;
-  const ctx = mc.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  for (let i = 0; i < ring.length; i++) {
-    const x = (ring[i][0] - west) / (east - west) * res;
-    const y = (north - ring[i][1]) / (north - south) * res;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  const data = ctx.getImageData(0, 0, res, res).data;
-  let total = 0;
-  for (let i = 3; i < data.length; i += 4) if (data[i] >= 128) total++;
-  return { mask: data, total };
-}
-
-async function fetchWaldfunkPixel(svc, bbox, mask, maskedTotal, res = 512) {
-  const url =
-    `${svc.wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
-    `&FORMAT=image/png&TRANSPARENT=true` +
-    `&LAYERS=${encodeURIComponent(svc.layers[0].name)}&STYLES=` +
-    `&SRS=EPSG:4326&BBOX=${bbox}&WIDTH=${res}&HEIGHT=${res}`;
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return null;
-    const blob = await r.blob();
-    const objUrl = URL.createObjectURL(blob);
-    const img = await new Promise((resolve, reject) => {
-      const el = new Image(); el.onload = () => resolve(el); el.onerror = reject; el.src = objUrl;
-    }).finally(() => URL.revokeObjectURL(objUrl));
-    const c = document.createElement("canvas");
-    c.width = c.height = res;
-    c.getContext("2d").drawImage(img, 0, 0);
-    const pix = c.getContext("2d").getImageData(0, 0, res, res).data;
-    let hit = 0;
-    for (let i = 3; i < mask.length; i += 4) {
-      if (mask[i] >= 128 && pix[i] >= 128) hit++;
-    }
-    return maskedTotal > 0 ? Math.round(hit / maskedTotal * 100) : null;
-  } catch { return null; }
-}
-
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
 function buildGrid(ring, west, east, south, north, gridSize = 15) {
@@ -363,11 +319,6 @@ async function gfiCoverage(wmsUrl, layerName, gridPts) {
   if (!gridPts.length) return null;
   const hits = await Promise.all(gridPts.map(p => pointGfi(wmsUrl, layerName, p.lng, p.lat)));
   return Math.round(hits.filter(Boolean).length / gridPts.length * 100);
-}
-
-async function gridGfi(wmsUrl, layerName, gridPts) {
-  const results = await Promise.all(gridPts.map(p => pointGfi(wmsUrl, layerName, p.lng, p.lat)));
-  return results.filter(Boolean);
 }
 
 async function gfiFromGetMap(svc, bbox, ring, west, east, south, north, { dedup, maxQueries = 25, res = 256 } = {}) {
@@ -654,6 +605,10 @@ const REPORT_CSS = `
   .hist-bar-wrap { flex: 1; display: flex; align-items: center; gap: 6px; }
   .hist-bar { height: 14px; min-width: 2px; border-radius: 2px; }
   .hist-pct { font-size: 10px; color: #888780; white-space: nowrap; }
+  .attr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .attr-table th, .attr-table td { padding: 3px 0; vertical-align: top; border-bottom: 1px solid #e0ddd8; }
+  .attr-table th { width: 40%; color: #888780; font-weight: 500; padding-right: 8px; }
+  .attr-table td { color: #2a2722; word-break: break-word; }
   footer { margin-top: 48px; font-size: 11px; color: #aaa; border-top: 1px solid #e0ddd8; padding-top: 12px; }
   @media print { body { max-width: 100%; margin: 16px; } }
 `;

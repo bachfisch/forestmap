@@ -143,8 +143,6 @@ function pointInRing(lng, lat, ring) {
 
 async function fetchPixelColor(service, layer, lng, lat) {
   const d = 0.0001;
-  const version = service.wmsVersion ?? "1.3.0";
-  const crsParam = version === "1.3.0" ? "CRS" : "SRS";
   const url =
     `${service.wmsUrl}` +
     `?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
@@ -208,8 +206,12 @@ export async function queryAtPoint(lng, lat) {
   const settled = await Promise.all(
     tasks.map(async t => {
       if (t.kind === "biotope-wfs") {
-        const features = await fetchBiotopeAtPoint(lng, lat);
-        return { ...t, features };
+        try {
+          const features = await fetchBiotopeAtPoint(lng, lat);
+          return { ...t, features };
+        } catch {
+          return { ...t, features: [] };
+        }
       }
       if (t.kind === "fern") {
         const color = await fetchPixelColor(t.service, t.layer, lng, lat);
