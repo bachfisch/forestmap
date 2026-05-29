@@ -17,12 +17,38 @@ export function initSidebar() {
     summary.innerHTML = `<span class="cat-icon">${cat.icon}</span><span class="cat-label">${cat.label}</span>`;
     details.append(summary);
 
+    const groups = new Map();
     for (const svc of services) {
-      details.append(renderService(svc));
+      const key = svc.group ?? "";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(svc);
+    }
+
+    for (const [groupName, svcs] of groups) {
+      if (!groupName) {
+        for (const svc of svcs) details.append(renderService(svc));
+      } else {
+        details.append(renderSubGroup(groupName, svcs));
+      }
     }
 
     nav.append(details);
   }
+}
+
+function renderSubGroup(name, services) {
+  const details = document.createElement("details");
+  details.className = "subcat-group";
+
+  const summary = document.createElement("summary");
+  summary.className = "subcat-header";
+  summary.textContent = name;
+  details.append(summary);
+
+  for (const svc of services) {
+    details.append(renderService(svc));
+  }
+  return details;
 }
 
 function renderService(svc) {

@@ -9,25 +9,42 @@ function getActiveLegends() {
   const visible = getVisible();
   const result = [];
   for (const svc of SERVICES) {
-    if (!svc.colorLegend) continue;
-    if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
-      result.push({ label: svc.label, legend: svc.colorLegend });
+    if (svc.featureInfoType === "none") continue;
+    const visibleLayers = svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`));
+    if (!visibleLayers.length) continue;
+
+    if (svc.colorLegend) {
+      result.push({ label: svc.label, type: "color", legend: svc.colorLegend });
+    } else if (svc.featureInfoType === "value-only") {
+      const firstLayer = visibleLayers[0].name.split(",")[0];
+      const version = svc.wmsVersion ?? "1.3.0";
+      const url = `${svc.wmsUrl}?SERVICE=WMS&VERSION=${version}&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(firstLayer)}`;
+      result.push({ label: svc.label, type: "wms", url });
+    }
   }
   return result;
 }
 
-function renderEntries(legend) {
+function renderEntries(entry) {
   entriesEl.innerHTML = "";
-  for (const e of legend.entries) {
-    const row = document.createElement("div");
-    row.className = "legend-row";
-    const swatch = document.createElement("span");
-    swatch.className = "legend-swatch";
-    swatch.style.background = e.hex;
-    const label = document.createElement("span");
-    label.textContent = e.label;
-    row.append(swatch, label);
-    entriesEl.append(row);
+  if (entry.type === "color") {
+    for (const e of entry.legend.entries) {
+      const row = document.createElement("div");
+      row.className = "legend-row";
+      const swatch = document.createElement("span");
+      swatch.className = "legend-swatch";
+      swatch.style.background = e.hex;
+      const label = document.createElement("span");
+      label.textContent = e.label;
+      row.append(swatch, label);
+      entriesEl.append(row);
+    }
+  } else {
+    const img = document.createElement("img");
+    img.src = entry.url;
+    img.className = "legend-wms-img";
+    img.alt = entry.label;
+    entriesEl.append(img);
   }
 }
 
@@ -40,9 +57,9 @@ function update() {
   boxEl.hidden = false;
   activeIndex = Math.min(activeIndex, activeLegends.length - 1);
 
-  const { label, legend } = activeLegends[activeIndex];
-  titleEl.textContent = label;
-  renderEntries(legend);
+  const entry = activeLegends[activeIndex];
+  titleEl.textContent = entry.label;
+  renderEntries(entry);
 
   const multi = activeLegends.length > 1;
   prevBtn.hidden = !multi;
