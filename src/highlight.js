@@ -11,6 +11,13 @@ export function setHighlight(geometry) {
   });
 }
 
+export function setHighlightFeatures(geometries) {
+  _setData?.({
+    type: "FeatureCollection",
+    features: (geometries ?? []).map(g => ({ type: "Feature", geometry: g, properties: {} })),
+  });
+}
+
 export function clearHighlight() {
   _setData?.({ type: "FeatureCollection", features: [] });
 }

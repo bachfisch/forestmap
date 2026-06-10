@@ -10,7 +10,11 @@ import { SERVICES, CATEGORIES } from "../services.js";
 const REPORT_SVCS = SERVICES.filter(s => s.category !== "flurstücke" && (s.featureInfoType !== "none" || s.wfsUrl));
 
 const reportSelected = new Set(["laub-nadelwaldkarte", "waldhoehen"]);
-import { setHighlight, clearHighlight } from "./highlight.js";
+import { setHighlight, setHighlightFeatures, clearHighlight } from "./highlight.js";
+
+// Map query function — registered by map.js after load
+let _mapQueryFn = null;
+export function setMapQuery(fn) { _mapQueryFn = fn; }
 
 const ChartRegistry = {
   RasterValue,
@@ -118,7 +122,18 @@ function renderEntry(entry) {
     errDiv.textContent = "Darstellung nicht verfügbar.";
     chartEl = errDiv;
   }
-  body.append(chartEl);
+  // For basemap services: add expand buttons to property table
+  if (service.fetchPoint === "basemap" && firstResult.properties && firstResult.basemapLayerIds) {
+    const expandTable = buildExpandTable(firstResult.properties, firstResult.basemapLayerIds, body, service);
+    if (expandTable) body.append(expandTable);
+  } else {
+    body.append(chartEl);
+  }
+
+  // Buffer container — can be updated by expand action
+  const bufferContainer = document.createElement("div");
+  bufferContainer.dataset.bufferContainer = "1";
+  body.append(bufferContainer);
 
   const geom = firstResult.geometry;
   if (geom && (geom.type === "Polygon" || geom.type === "MultiPolygon")) {
@@ -128,9 +143,9 @@ function renderEntry(entry) {
     btn.className = "report-btn";
     btn.textContent = "Report erstellen";
     btn.addEventListener("click", () => triggerReport(firstResult, service, btn, statusEl));
-    body.append(btn, buildReportDropdown(), statusEl);
+    bufferContainer.append(btn, buildReportDropdown(), statusEl);
   } else if (geom && (geom.type === "LineString" || geom.type === "MultiLineString" || geom.type === "Point")) {
-    body.append(buildBufferSection(firstResult, service));
+    renderBufferInto(bufferContainer, [geom], service);
   }
 
   section.append(header, body);
@@ -277,7 +292,90 @@ function buildReportItem(label, id, isChild = false, parentCb = null, siblings =
   return l;
 }
 
-function buildBufferSection(result, service) {
+// ── Basemap expand table ──────────────────────────────────────────────────────
+
+function buildExpandTable(props, layerIds, body, service) {
+  const SKIP = new Set(["@ns:com:here:xyz", "bbox", "type"]);
+  const entries = Object.entries(props).filter(([k, v]) =>
+    !SKIP.has(k) && v !== null && v !== undefined && v !== ""
+  );
+  if (!entries.length) return null;
+
+  const table = document.createElement("table");
+  table.className = "attr-table";
+  const tbody = document.createElement("tbody");
+
+  for (const [key, value] of entries) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = key;
+    const td = document.createElement("td");
+
+    const valSpan = document.createElement("span");
+    valSpan.textContent = String(value);
+    td.append(valSpan);
+
+    // Expand button for string/number values
+    if ((typeof value === "string" || typeof value === "number") && _mapQueryFn) {
+      const btn = document.createElement("button");
+      btn.className = "expand-btn";
+      btn.title = `Alle sichtbaren Features mit ${key} = "${value}" auswählen`;
+      btn.textContent = "⊕";
+      btn.addEventListener("click", () => {
+        const all = _mapQueryFn(layerIds);
+        const matching = all.filter(f => f.properties?.[key] === value);
+        if (!matching.length) return;
+        const geometries = matching.map(f => f.geometry).filter(Boolean);
+        setHighlightFeatures(geometries);
+        // Update buffer container
+        const container = body.querySelector("[data-buffer-container]");
+        if (container) renderBufferInto(container, geometries, service);
+        btn.classList.add("active");
+        btn.title = `${matching.length} Feature(s) ausgewählt`;
+      });
+      td.append(btn);
+    }
+
+    tr.append(th, td);
+    tbody.append(tr);
+  }
+
+  table.append(tbody);
+  return table;
+}
+
+function renderBufferInto(container, geometries, service) {
+  container.innerHTML = "";
+  container.dataset.bufferContainer = "1";
+  if (!geometries.length) return;
+  const hasLines = geometries.some(g =>
+    g.type === "LineString" || g.type === "MultiLineString"
+  );
+  const hasPolygons = geometries.some(g =>
+    g.type === "Polygon" || g.type === "MultiPolygon"
+  );
+  if (hasLines || (!hasPolygons && geometries.length)) {
+    container.append(buildBufferSection(geometries, service));
+  } else if (hasPolygons) {
+    const statusEl = document.createElement("p");
+    statusEl.className = "report-status";
+    const btn = document.createElement("button");
+    btn.className = "report-btn";
+    btn.textContent = "Report erstellen";
+    const mergedGeom = geometries.length === 1 ? geometries[0]
+      : { type: "MultiPolygon", coordinates: geometries.map(g =>
+          g.type === "Polygon" ? g.coordinates : g.coordinates).flat()
+        };
+    btn.addEventListener("click", () => triggerReport(
+      { geometry: mergedGeom, properties: {} }, service, btn, statusEl
+    ));
+    container.append(btn, buildReportDropdown(), statusEl);
+  }
+}
+
+// ── Buffer section ────────────────────────────────────────────────────────────
+
+function buildBufferSection(geometries, service) {
   const wrap = document.createElement("div");
   wrap.className = "buffer-section";
 
@@ -328,15 +426,18 @@ function buildBufferSection(result, service) {
     const turf = window.turf;
     if (!turf) { console.error("Turf.js nicht geladen"); return; }
     try {
-      const buffered = turf.buffer(
-        { type: "Feature", geometry: result.geometry, properties: {} },
-        distance,
-        { units: "meters" }
-      );
-      bufferGeometry = buffered.geometry;
+      const features = geometries.map(g => ({ type: "Feature", geometry: g, properties: {} }));
+      const collection = turf.featureCollection(features);
+      const buffered = turf.buffer(collection, distance, { units: "meters" });
+      // Union all individual buffers into one polygon
+      let merged = buffered.features[0];
+      for (let i = 1; i < buffered.features.length; i++) {
+        merged = turf.union(merged, buffered.features[i]);
+      }
+      bufferGeometry = merged.geometry;
       setHighlight(bufferGeometry);
       reportWrap.hidden = false;
-      applyBtn.textContent = "Puffer aktualisieren";
+      applyBtn.textContent = `Puffer aktualisieren (${geometries.length} Features)`;
     } catch (err) {
       console.error("Buffer-Berechnung fehlgeschlagen:", err);
     }
@@ -345,7 +446,7 @@ function buildBufferSection(result, service) {
   reportBtn.addEventListener("click", () => {
     if (!bufferGeometry) return;
     triggerReport(
-      { geometry: bufferGeometry, properties: result.properties },
+      { geometry: bufferGeometry, properties: {} },
       service, reportBtn, statusEl
     );
   });

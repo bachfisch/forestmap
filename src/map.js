@@ -2,7 +2,7 @@ import { SERVICES }      from "../services.js";
 import { BASEMAP_STYLE } from "../config.js";
 import { isVisible, onChange } from "./state.js";
 import { initSidebar }  from "./sidebar.js";
-import { initPopup, showLoading, showResults } from "./popup.js";
+import { initPopup, showLoading, showResults, setMapQuery } from "./popup.js";
 import { queryAtPoint } from "./fetcher.js";
 import { registerHighlight } from "./highlight.js";
 import { initLegend } from "./legend.js";
@@ -198,6 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     registerHighlight(data => map.getSource("highlight").setData(data));
+    setMapQuery(layerIds => map.queryRenderedFeatures({ layers: layerIds }));
 
     let wfsTimer;
     const refreshAllWfs = () => {
@@ -247,17 +248,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       for (const svc of BASEMAP_SVCS) {
         if (!isVisible(svc.id, svc.layers[0].name)) continue;
-        const hits = map.queryRenderedFeatures(e.point, { layers: svc.mapLayerIds });
+        const hits = map.queryRenderedFeatures(e.point)
+          .filter(f => f.source === "smarttiles_de" &&
+                       (f.layer.type === "fill" || f.layer.type === "line"));
         if (!hits.length) continue;
         const feat = hits[0];
         entries.push({
           kind: "standard",
           service: svc,
           results: [{
-            layer: svc.layers[0],
-            value: feat.properties.name ?? feat.properties.bezeichnung ?? feat.properties.funktion ?? null,
+            layer: { ...svc.layers[0], label: feat.layer.id },
+            value: feat.properties.name ?? feat.properties.bezeichnung ?? feat.properties.funktion ?? feat.layer.id,
             properties: feat.properties,
             geometry: feat.geometry,
+            basemapLayerIds: [feat.layer.id],
           }],
         });
       }

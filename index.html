@@ -611,6 +611,22 @@
 
     .buffer-apply-btn:hover { background: var(--bg); }
 
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0 3px;
+      margin-left: 4px;
+      vertical-align: middle;
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+    .expand-btn:hover { color: var(--accent); opacity: 1; }
+    .expand-btn.active { color: var(--accent); opacity: 1; }
+
     .report-btn {
       margin-top: 10px;
       width: 100%;
