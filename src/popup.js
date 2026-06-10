@@ -3,7 +3,7 @@ import { render as FeatureTable }     from "./charts/FeatureTable.js";
 import { render as ScenarioBar }      from "./charts/ScenarioBar.js";
 import { render as BuchdruckerChart } from "./charts/BuchdruckerChart.js";
 import { render as BodenfeuchteChart} from "./charts/BodenfeuchteChart.js";
-import { getFilter, getReportMode } from "./state.js";
+import { getFilter } from "./state.js";
 import { SERVICES, CATEGORIES } from "../services.js";
 
 // All reportable services (exclude the parcel layer itself)

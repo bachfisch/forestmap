@@ -4,26 +4,25 @@ import { fetchWfsPoint, fetchBiotopeAtPoint } from "./wfs.js";
 
 async function fetchGfi(service, layer, lng, lat) {
   const d = service.gfiBboxDeg ?? 0.0005;
-  const version = "1.1.1";
+  const infoFormat = service.gfiInfoFormat ?? "application/json";
   const url =
     `${service.wmsUrl}` +
-    `?SERVICE=WMS&VERSION=${version}&REQUEST=GetFeatureInfo` +
+    `?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo` +
     `&FORMAT=image/png&TRANSPARENT=true` +
     `&SRS=EPSG:4326&BBOX=${lng-d},${lat-d},${lng+d},${lat+d}` +
     `&WIDTH=256&HEIGHT=256&X=128&Y=128` +
     `&LAYERS=${encodeURIComponent(layer.name)}` +
     `&QUERY_LAYERS=${encodeURIComponent(layer.name)}` +
-    `&INFO_FORMAT=application/json&FEATURE_COUNT=1`;
+    `&INFO_FORMAT=${encodeURIComponent(infoFormat)}&FEATURE_COUNT=1`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return { layer, value: null, properties: null };
     const text = await res.text();
 
-    if (text.trimStart().startsWith("{")) {
-      return parseJsonGfi(service, layer, text);
-    }
-    return parseXmlGfi(layer, text);
+    if (text.trimStart().startsWith("{")) return parseJsonGfi(service, layer, text);
+    if (text.includes("FIELDS"))         return parseXmlGfi(layer, text);
+    return parsePlainTextGfi(service, layer, text);
   } catch {
     return { layer, value: null, properties: null };
   }
@@ -56,6 +55,23 @@ function parseXmlGfi(layer, xml) {
   } catch {
     return { layer, value: null, properties: null };
   }
+}
+
+function parsePlainTextGfi(service, layer, text) {
+  const attrs = {};
+  for (const line of text.split('\n')) {
+    const m = line.match(/^([^=\-\r]+?)\s*=\s*(.+?)\s*$/);
+    if (!m) continue;
+    const key = m[1].trim();
+    const num = parseFloat(m[2]);
+    attrs[key] = isNaN(num) ? m[2].trim() : num;
+  }
+  if (!Object.keys(attrs).length) return { layer, value: null, properties: null };
+  let value = attrs.GRAY_INDEX
+    ?? Object.values(attrs).find(v => typeof v === "number" && isFinite(v))
+    ?? null;
+  if (typeof value === "number" && service.valueScale) value *= service.valueScale;
+  return { layer, value: typeof value === "number" ? value : null, properties: attrs };
 }
 
 function parseJsonGfi(service, layer, text) {
@@ -173,8 +189,14 @@ async function fetchPixelColor(service, layer, lng, lat) {
 export async function queryAtPoint(lng, lat) {
   const visible = getVisible();
 
+  const WFS_KIND = {
+    "hb:Habitat":                "biotope-wfs",
+    "elu:ExistingLandUseObject": "waldfunk-wfs",
+    "cp:CadastralParcel":        "wfs",
+  };
+
   const activeServices = SERVICES.filter(s =>
-    (s.featureInfoType !== "none" || s.wfsUrl) &&
+    s.fetchPoint !== "none" && s.fetchPoint !== "overpass" &&
     s.layers.some(l => visible.has(`${s.id}::${l.name}`))
   );
 
@@ -183,22 +205,16 @@ export async function queryAtPoint(lng, lat) {
   const tasks = [];
 
   for (const svc of activeServices) {
-    const cat = svc.category;
-    if (cat === "fernerkundung" || cat === "thuenen") {
+    const mode = svc.fetchPoint;
+    if (mode === "pixel") {
       for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "fern", service: svc, layer: l });
-    } else if (cat === "klima" || cat === "dwd") {
+    } else if (mode === "gfi-all") {
       for (const l of svc.layers)
         tasks.push({ kind: "klima", service: svc, layer: l });
-    } else if (cat === "waldbiotope" && svc.wfsUrl) {
+    } else if (mode === "wfs") {
       if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
-        tasks.push({ kind: "biotope-wfs", service: svc, layer: svc.layers[0] });
-    } else if (cat === "waldfunktionen" && svc.wfsUrl && !svc.wmsUrl) {
-      if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
-        tasks.push({ kind: "waldfunk-wfs", service: svc, layer: svc.layers[0] });
-    } else if (cat === "flurstücke" && svc.wfsUrl) {
-      if (svc.layers.some(l => visible.has(`${svc.id}::${l.name}`)))
-        tasks.push({ kind: "wfs", service: svc, layer: svc.layers[0] });
+        tasks.push({ kind: WFS_KIND[svc.wfsTypeName] ?? "wfs", service: svc, layer: svc.layers[0] });
     } else {
       for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "standard", service: svc, layer: l });

@@ -1,9 +1,9 @@
 import { SERVICES, CATEGORIES } from "../services.js";
 import { fetchBiotopesInBbox } from "./wfs.js";
 
-const WALDFUNK_SVCS = SERVICES.filter(s => s.category === "waldfunktionen");
-const FERN_SVCS     = SERVICES.filter(s => s.category === "fernerkundung" || s.category === "thuenen");
-const BIOTOPE_SVC   = SERVICES.find(s => s.id === "waldbiotope");
+const WALDFUNK_SVCS = SERVICES.filter(s => s.fetchPolygon === "wfs-coverage");
+const FERN_SVCS     = SERVICES.filter(s => s.fetchPolygon === "pixel-hist");
+const BIOTOPE_SVC   = SERVICES.find(s => s.fetchPolygon === "wfs-features");
 const STANDORT_SVC  = SERVICES.find(s => s.id === "standortskarte");
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -27,23 +27,22 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
   // selection is a Set<serviceId>
   const sel = (selection instanceof Set)
     ? selection
-    : new Set(SERVICES.filter(s => s.category !== "flurstücke" && s.featureInfoType !== "none").map(s => s.id));
+    : new Set(SERVICES.filter(s => s.fetchPolygon !== "none").map(s => s.id));
 
   const activeFern     = FERN_SVCS.filter(s => sel.has(s.id));
   const activeWaldfunk = WALDFUNK_SVCS.filter(s => sel.has(s.id));
-  const hasBiotope  = !!(BIOTOPE_SVC  && sel.has("waldbiotope"));
+  const hasBiotope  = !!(BIOTOPE_SVC  && sel.has(BIOTOPE_SVC.id));
   const hasStandort = !!(STANDORT_SVC && sel.has("standortskarte"));
 
-  // Generic sections: all other selected services grouped by category
   const SPECIAL = new Set([
     ...activeFern.map(s => s.id),
     ...activeWaldfunk.map(s => s.id),
-    "waldbiotope", "standortskarte",
-  ]);
+    BIOTOPE_SVC?.id, STANDORT_SVC?.id,
+  ].filter(Boolean));
   const catLabel = id => CATEGORIES.find(c => c.id === id)?.label ?? id;
   const genericByCategory = new Map();
   for (const svc of SERVICES) {
-    if (!sel.has(svc.id) || SPECIAL.has(svc.id) || svc.category === "flurstücke") continue;
+    if (!sel.has(svc.id) || SPECIAL.has(svc.id) || svc.fetchPolygon === "none") continue;
     if (!genericByCategory.has(svc.category)) genericByCategory.set(svc.category, []);
     genericByCategory.get(svc.category).push(svc);
   }
@@ -224,13 +223,38 @@ function buildStandortHtml(standortRaw) {
 }
 
 async function fetchGenericSvc(svc, bbox, ring, west, east, south, north, gridPts) {
-  if (svc.featureInfoType === "geojson") {
-    return { type: "geojson", data: await gfiFromGetMap(svc, bbox, ring, west, east, south, north, {}).catch(() => []) };
+  switch (svc.fetchPolygon) {
+    case "gfi-features":
+      return { type: "geojson", data: await gfiFromGetMap(svc, bbox, ring, west, east, south, north, {}).catch(() => []) };
+
+    case "gfi-coverage-multi": {
+      const step = Math.max(1, Math.ceil(gridPts.length / 20));
+      const sample = gridPts.filter((_, i) => i % step === 0);
+      const layerResults = await Promise.all(svc.layers.map(layer =>
+        gfiCoverage(svc.wmsUrl, layer.name, sample)
+          .then(pct => ({ label: layer.label, pct }))
+          .catch(() => ({ label: layer.label, pct: null }))
+      ));
+      return { type: "multi-value", layers: layerResults };
+    }
+
+    case "gfi-point": {
+      const cLng = (west + east) / 2;
+      const cLat = (south + north) / 2;
+      const props = await pointGfi(svc.wmsUrl, svc.layers[0].name, cLng, cLat, svc.gfiInfoFormat, svc.gfiBboxDeg).catch(() => null);
+      const raw = props
+        ? (props.GRAY_INDEX ?? props.value ?? Object.values(props).find(v => typeof v === "number") ?? null)
+        : null;
+      const value = (raw !== null && typeof svc.valueScale === "number") ? raw * svc.valueScale : raw;
+      return { type: "point-value", label: svc.label, value };
+    }
+
+    default: { // "gfi-coverage"
+      const layer = svc.layers[0];
+      const pct = await gfiCoverage(svc.wmsUrl, layer.name.split(",")[0], gridPts).catch(() => null);
+      return { type: "value", label: svc.label, pct };
+    }
   }
-  // value-only: coverage % for each layer (first layer only to avoid request overload)
-  const layer = svc.layers[0];
-  const pct = await gfiCoverage(svc.wmsUrl, layer.name.split(",")[0], gridPts).catch(() => null);
-  return { type: "value", label: svc.label, pct };
 }
 
 function buildGenericCatHtml(secId, catLabel, svcs, results) {
@@ -253,15 +277,30 @@ function buildGenericCatHtml(secId, catLabel, svcs, results) {
       return `<p class="svc-sublabel">${esc(svc.label)}</p>${tables}`;
     }
 
+    if (result.type === "multi-value") {
+      const present = result.layers
+        .filter(l => l.pct !== null && l.pct > 0)
+        .sort((a, b) => b.pct - a.pct);
+      if (!present.length) return `<tr><td>${esc(svc.label)}</td><td class="muted">Nicht im Flurstück</td></tr>`;
+      return present.map(l => `<tr><td>${esc(l.label)}</td><td>${l.pct} %</td></tr>`).join("");
+    }
+
+    if (result.type === "point-value") {
+      const display = result.value !== null && result.value !== undefined
+        ? (typeof result.value === "number" ? result.value.toFixed(1) : String(result.value))
+        : "–";
+      return `<tr><td>${esc(result.label ?? svc.label)}</td><td>${display}</td></tr>`;
+    }
+
     if (result.pct === null || result.pct === 0) return `<tr><td>${esc(result.label ?? svc.label)}</td><td class="muted">Nicht im Flurstück</td></tr>`;
     return `<tr><td>${esc(result.label ?? svc.label)}</td><td>${result.pct} %</td></tr>`;
   });
 
-  const valueParts = parts.filter((p, i) => results[i]?.type === "value" && p);
+  const valueParts = parts.filter((p, i) => ["value", "multi-value", "point-value"].includes(results[i]?.type) && p);
   const geojsonParts = parts.filter((p, i) => results[i]?.type === "geojson" && p);
 
   const inner = [
-    valueParts.length ? `<table><thead><tr><th>Layer</th><th>Bedeckung</th></tr></thead><tbody>${valueParts.join("")}</tbody></table>` : "",
+    valueParts.length ? `<table><thead><tr><th>Layer</th><th>Ergebnis</th></tr></thead><tbody>${valueParts.join("")}</tbody></table>` : "",
     ...geojsonParts,
   ].filter(Boolean).join("") || `<p class="none">Keine Daten gefunden.</p>`;
 
@@ -382,15 +421,15 @@ async function gfiFromGetMap(svc, bbox, ring, west, east, south, north, { dedup,
   });
 }
 
-async function pointGfi(wmsUrl, layerName, lng, lat) {
-  const d = 0.0005;
+async function pointGfi(wmsUrl, layerName, lng, lat, infoFormat = "application/json", bboxDeg = 0.0005) {
+  const d = bboxDeg;
   const url =
     `${wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo` +
     `&FORMAT=image/png&TRANSPARENT=true` +
     `&SRS=EPSG:4326&BBOX=${lng-d},${lat-d},${lng+d},${lat+d}` +
     `&WIDTH=256&HEIGHT=256&X=128&Y=128` +
     `&LAYERS=${encodeURIComponent(layerName)}&QUERY_LAYERS=${encodeURIComponent(layerName)}` +
-    `&INFO_FORMAT=application/json&FEATURE_COUNT=1`;
+    `&INFO_FORMAT=${encodeURIComponent(infoFormat)}&FEATURE_COUNT=1`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
@@ -410,7 +449,15 @@ async function pointGfi(wmsUrl, layerName, lng, lat) {
       for (const a of fields.attributes) attrs[a.name] = a.value;
       return Object.keys(attrs).length > 0 ? attrs : null;
     }
-    return null;
+    // text/plain: parse key = value lines
+    const attrs = {};
+    for (const line of text.split('\n')) {
+      const m = line.match(/^([^=\-\r]+?)\s*=\s*(.+?)\s*$/);
+      if (!m) continue;
+      const num = parseFloat(m[2]);
+      attrs[m[1].trim()] = isNaN(num) ? m[2].trim() : num;
+    }
+    return Object.keys(attrs).length > 0 ? attrs : null;
   } catch { return null; }
 }
 

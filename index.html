@@ -194,6 +194,8 @@
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
     }
 
     .layer-toggle {
@@ -217,6 +219,7 @@
     .layer-label {
       font-size: 12px;
       color: var(--text);
+      flex: 1;
     }
 
     /* ── MAP ─────────────────────────────────────────────────── */
@@ -477,10 +480,6 @@
     }
     .layer-info-btn:hover { color: var(--accent); opacity: 1; }
 
-    .layer-label { flex: 1; }
-
-    .svc-header { display: flex; align-items: center; }
-
     .layer-filter input.active {
       border-color: var(--accent);
       background: #f0faf6;
@@ -589,7 +588,8 @@
     #legend-box {
       position: absolute;
       bottom: 36px;
-      left: 10px;
+      left: calc(var(--sidebar-w) + 20px);
+      transition: left 0.2s ease;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -677,6 +677,8 @@
     }
 
     .legend-dot.active { background: var(--accent); }
+
+    #sidebar.collapsed ~ #map-container #legend-box { left: 10px; }
 
     /* MapLibre overrides */
     .maplibregl-ctrl-group { box-shadow: 0 1px 4px rgba(0,0,0,0.15) !important; }
