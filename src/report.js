@@ -10,19 +10,22 @@ const STANDORT_SVC  = SERVICES.find(s => s.id === "standortskarte");
 
 export async function generateReport(parcelResult, w, onStatus = () => {}, selection = null) {
   const geom = parcelResult.geometry;
-  const ring = geom?.type === "MultiPolygon"
-    ? geom.coordinates?.[0]?.[0]
-    : geom?.coordinates?.[0];
-  if (!ring) return;
+  const rings = geom?.type === "MultiPolygon"
+    ? geom.coordinates.map(poly => poly[0])
+    : geom?.type === "Polygon"
+    ? [geom.coordinates[0]]
+    : null;
+  if (!rings?.length) return;
 
-  const lngs = ring.map(c => c[0]);
-  const lats  = ring.map(c => c[1]);
+  const allPts = rings.flat();
+  const lngs = allPts.map(c => c[0]);
+  const lats  = allPts.map(c => c[1]);
   const west  = Math.min(...lngs);
   const east  = Math.max(...lngs);
   const south = Math.min(...lats);
   const north = Math.max(...lats);
   const bbox  = `${west},${south},${east},${north}`;
-  const gridPts = buildGrid(ring, west, east, south, north, 15);
+  const gridPts = buildGrid(rings, west, east, south, north, 15);
 
   // selection is a Set<serviceId>
   const sel = (selection instanceof Set)
@@ -60,7 +63,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
 
   if (activeFern.length) {
     tasks.push(
-      fetchFernStack(activeFern, bbox, ring, west, east, south, north)
+      fetchFernStack(activeFern, bbox, rings, west, east, south, north)
         .then(rows => { updateSection(w, "sec-fern", buildFernHtml(stackToFernData(rows, activeFern))); tick("Fernerkundung"); })
         .catch(() => { updateSection(w, "sec-fern", sectionFallback("sec-fern", "Fernerkundung")); tick("Fernerkundung"); })
     );
@@ -101,7 +104,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
     const label = catLabel(catId);
     const secId = `sec-cat-${catId}`;
     tasks.push(
-      Promise.all(svcs.map(svc => fetchGenericSvc(svc, bbox, ring, west, east, south, north, gridPts)))
+      Promise.all(svcs.map(svc => fetchGenericSvc(svc, bbox, rings, west, east, south, north, gridPts)))
         .then(results => { updateSection(w, secId, buildGenericCatHtml(secId, label, svcs, results)); tick(label); })
         .catch(() => { updateSection(w, secId, sectionFallback(secId, label)); tick(label); })
     );
@@ -234,10 +237,10 @@ function buildStandortHtml(standortRaw) {
   }</section>`;
 }
 
-async function fetchGenericSvc(svc, bbox, ring, west, east, south, north, gridPts) {
+async function fetchGenericSvc(svc, bbox, rings, west, east, south, north, gridPts) {
   switch (svc.fetchPolygon) {
     case "gfi-features":
-      return { type: "geojson", data: await gfiFromGetMap(svc, bbox, ring, west, east, south, north, {}).catch(() => []) };
+      return { type: "geojson", data: await gfiFromGetMap(svc, bbox, rings, west, east, south, north, {}).catch(() => []) };
 
     case "gfi-coverage-multi": {
       const step = Math.max(1, Math.ceil(gridPts.length / 20));
@@ -355,13 +358,13 @@ function parseGmlPolygons(gml) {
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 
-function buildGrid(ring, west, east, south, north, gridSize = 15) {
+function buildGrid(rings, west, east, south, north, gridSize = 15) {
   const pts = [];
   for (let xi = 0; xi < gridSize; xi++) {
     for (let yi = 0; yi < gridSize; yi++) {
       const lng = west + (xi + 0.5) / gridSize * (east - west);
       const lat = south + (yi + 0.5) / gridSize * (north - south);
-      if (pointInPolygon(lng, lat, ring)) pts.push({ lng, lat });
+      if (rings.some(ring => pointInPolygon(lng, lat, ring))) pts.push({ lng, lat });
     }
   }
   return pts;
@@ -375,7 +378,7 @@ async function gfiCoverage(wmsUrl, layerName, gridPts) {
   return Math.round(hits.filter(Boolean).length / gridPts.length * 100);
 }
 
-async function gfiFromGetMap(svc, bbox, ring, west, east, south, north, { dedup, maxQueries = 25, res = 256 } = {}) {
+async function gfiFromGetMap(svc, bbox, rings, west, east, south, north, { dedup, maxQueries = 25, res = 256 } = {}) {
   const mapUrl =
     `${svc.wmsUrl}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
     `&FORMAT=image/png&TRANSPARENT=true` +
@@ -397,13 +400,8 @@ async function gfiFromGetMap(svc, bbox, ring, west, east, south, north, { dedup,
   } catch { return []; }
 
   const mc = document.createElement("canvas"); mc.width = mc.height = res;
-  const mCtx = mc.getContext("2d"); mCtx.fillStyle = "#fff"; mCtx.beginPath();
-  for (let i = 0; i < ring.length; i++) {
-    const x = (ring[i][0] - west) / (east - west) * res;
-    const y = (north - ring[i][1]) / (north - south) * res;
-    i === 0 ? mCtx.moveTo(x, y) : mCtx.lineTo(x, y);
-  }
-  mCtx.closePath(); mCtx.fill();
+  const mCtx = mc.getContext("2d");
+  drawRingsOnCanvas(mCtx, rings, west, east, south, north, res);
   const mask = mc.getContext("2d").getImageData(0, 0, res, res).data;
 
   const candidates = [];
@@ -473,21 +471,29 @@ async function pointGfi(wmsUrl, layerName, lng, lat, infoFormat = "application/j
   } catch { return null; }
 }
 
+// ── Canvas ring mask helper ───────────────────────────────────────────────────
+
+function drawRingsOnCanvas(ctx, rings, west, east, south, north, res) {
+  ctx.fillStyle = "#fff";
+  for (const ring of rings) {
+    ctx.beginPath();
+    for (let i = 0; i < ring.length; i++) {
+      const x = (ring[i][0] - west) / (east - west) * res;
+      const y = (north - ring[i][1]) / (north - south) * res;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 // ── Fernerkundung pixel stack ─────────────────────────────────────────────────
 
-async function fetchFernStack(svcs, bbox, ring, west, east, south, north, res = 256) {
+async function fetchFernStack(svcs, bbox, rings, west, east, south, north, res = 256) {
   const mc = document.createElement("canvas");
   mc.width = mc.height = res;
   const mCtx = mc.getContext("2d");
-  mCtx.fillStyle = "#fff";
-  mCtx.beginPath();
-  for (let i = 0; i < ring.length; i++) {
-    const x = (ring[i][0] - west) / (east - west) * res;
-    const y = (north - ring[i][1]) / (north - south) * res;
-    i === 0 ? mCtx.moveTo(x, y) : mCtx.lineTo(x, y);
-  }
-  mCtx.closePath();
-  mCtx.fill();
+  drawRingsOnCanvas(mCtx, rings, west, east, south, north, res);
   const mask = mCtx.getImageData(0, 0, res, res).data;
 
   const pixArrays = await Promise.all(svcs.map(async svc => {

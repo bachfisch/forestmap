@@ -112,9 +112,31 @@
     }
 
     #sidebar-nav {
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
       flex: 1;
-      padding: 6px 0 16px;
+      overflow: hidden;
+    }
+
+    .nav-area-section {
+      flex-shrink: 0;
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 4px;
+    }
+
+    .nav-data-section {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 16px;
+    }
+
+    .nav-section-label {
+      padding: 8px 16px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
     }
 
     .cat-group {

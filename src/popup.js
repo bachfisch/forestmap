@@ -144,6 +144,7 @@ function renderEntry(entry) {
     btn.textContent = "Report erstellen";
     btn.addEventListener("click", () => triggerReport(firstResult, service, btn, statusEl));
     bufferContainer.append(btn, buildReportDropdown(), statusEl);
+    bufferContainer.append(buildBufferSection([geom], service));
   } else if (geom && (geom.type === "LineString" || geom.type === "MultiLineString" || geom.type === "Point")) {
     renderBufferInto(bufferContainer, [geom], service);
   }
@@ -363,13 +364,14 @@ function renderBufferInto(container, geometries, service) {
     btn.className = "report-btn";
     btn.textContent = "Report erstellen";
     const mergedGeom = geometries.length === 1 ? geometries[0]
-      : { type: "MultiPolygon", coordinates: geometries.map(g =>
-          g.type === "Polygon" ? g.coordinates : g.coordinates).flat()
-        };
+      : { type: "MultiPolygon", coordinates: geometries.flatMap(g =>
+          g.type === "MultiPolygon" ? g.coordinates : [g.coordinates]
+        ) };
     btn.addEventListener("click", () => triggerReport(
       { geometry: mergedGeom, properties: {} }, service, btn, statusEl
     ));
     container.append(btn, buildReportDropdown(), statusEl);
+    container.append(buildBufferSection(geometries, service));
   }
 }
 

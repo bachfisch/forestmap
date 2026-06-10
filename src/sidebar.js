@@ -1,11 +1,38 @@
 import { CATEGORIES, SERVICES } from "../services.js";
 import { isVisible, toggle, setFilter, getFilter } from "./state.js";
 
+const AREA_CATS = new Set(["flurstücke", "basemap"]);
+
 export function initSidebar() {
   const nav = document.getElementById("sidebar-nav");
   nav.innerHTML = "";
 
-  for (const cat of CATEGORIES) {
+  // ── Flächenauswahl ────────────────────────────────────────────────────────
+  const areaEl = document.createElement("div");
+  areaEl.className = "nav-area-section";
+
+  const areaLabel = document.createElement("div");
+  areaLabel.className = "nav-section-label";
+  areaLabel.textContent = "Flächenauswahl";
+  areaEl.append(areaLabel);
+
+  for (const cat of CATEGORIES.filter(c => AREA_CATS.has(c.id))) {
+    for (const svc of SERVICES.filter(s => s.category === cat.id)) {
+      areaEl.append(renderService(svc));
+    }
+  }
+  nav.append(areaEl);
+
+  // ── Datenebenen ───────────────────────────────────────────────────────────
+  const dataEl = document.createElement("div");
+  dataEl.className = "nav-data-section";
+
+  const dataLabel = document.createElement("div");
+  dataLabel.className = "nav-section-label";
+  dataLabel.textContent = "Datenebenen";
+  dataEl.append(dataLabel);
+
+  for (const cat of CATEGORIES.filter(c => !AREA_CATS.has(c.id))) {
     const services = SERVICES.filter(s => s.category === cat.id);
     if (!services.length) continue;
 
@@ -32,8 +59,9 @@ export function initSidebar() {
       }
     }
 
-    nav.append(details);
+    dataEl.append(details);
   }
+  nav.append(dataEl);
 }
 
 function renderSubGroup(name, services) {
