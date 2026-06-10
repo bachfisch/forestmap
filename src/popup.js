@@ -120,16 +120,17 @@ function renderEntry(entry) {
   }
   body.append(chartEl);
 
-  if ((service.category === "flurstücke" || service.category === "osm") && firstResult.geometry) {
+  const geom = firstResult.geometry;
+  if (geom && (geom.type === "Polygon" || geom.type === "MultiPolygon")) {
+    const statusEl = document.createElement("p");
+    statusEl.className = "report-status";
     const btn = document.createElement("button");
     btn.className = "report-btn";
     btn.textContent = "Report erstellen";
-
-    const statusEl = document.createElement("p");
-    statusEl.className = "report-status";
-
-    btn.addEventListener("click", () => triggerReport(firstResult, btn, statusEl));
+    btn.addEventListener("click", () => triggerReport(firstResult, service, btn, statusEl));
     body.append(btn, buildReportDropdown(), statusEl);
+  } else if (geom && (geom.type === "LineString" || geom.type === "MultiLineString" || geom.type === "Point")) {
+    body.append(buildBufferSection(firstResult, service));
   }
 
   section.append(header, body);
@@ -276,7 +277,83 @@ function buildReportItem(label, id, isChild = false, parentCb = null, siblings =
   return l;
 }
 
-async function triggerReport(parcelResult, btn, statusEl) {
+function buildBufferSection(result, service) {
+  const wrap = document.createElement("div");
+  wrap.className = "buffer-section";
+
+  const row = document.createElement("div");
+  row.className = "buffer-row";
+
+  const label = document.createElement("span");
+  label.className = "buffer-unit";
+  label.textContent = "Radius:";
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = "buffer-input";
+  input.min = "1";
+  input.max = "10000";
+  input.value = "100";
+
+  const unit = document.createElement("span");
+  unit.className = "buffer-unit";
+  unit.textContent = "m";
+
+  const applyBtn = document.createElement("button");
+  applyBtn.className = "buffer-apply-btn";
+  applyBtn.textContent = "Puffer anwenden";
+
+  row.append(label, input, unit, applyBtn);
+  wrap.append(row);
+
+  // Report section — revealed after buffer is applied
+  const reportWrap = document.createElement("div");
+  reportWrap.hidden = true;
+
+  const statusEl = document.createElement("p");
+  statusEl.className = "report-status";
+
+  const reportBtn = document.createElement("button");
+  reportBtn.className = "report-btn";
+  reportBtn.textContent = "Report erstellen";
+
+  reportWrap.append(reportBtn, buildReportDropdown(), statusEl);
+  wrap.append(reportWrap);
+
+  let bufferGeometry = null;
+
+  applyBtn.addEventListener("click", () => {
+    const distance = parseFloat(input.value);
+    if (!distance || distance <= 0) return;
+    const turf = window.turf;
+    if (!turf) { console.error("Turf.js nicht geladen"); return; }
+    try {
+      const buffered = turf.buffer(
+        { type: "Feature", geometry: result.geometry, properties: {} },
+        distance,
+        { units: "meters" }
+      );
+      bufferGeometry = buffered.geometry;
+      setHighlight(bufferGeometry);
+      reportWrap.hidden = false;
+      applyBtn.textContent = "Puffer aktualisieren";
+    } catch (err) {
+      console.error("Buffer-Berechnung fehlgeschlagen:", err);
+    }
+  });
+
+  reportBtn.addEventListener("click", () => {
+    if (!bufferGeometry) return;
+    triggerReport(
+      { geometry: bufferGeometry, properties: result.properties },
+      service, reportBtn, statusEl
+    );
+  });
+
+  return wrap;
+}
+
+async function triggerReport(parcelResult, service, btn, statusEl) {
   btn.textContent = "Wird erstellt…";
   btn.disabled = true;
 
@@ -298,7 +375,12 @@ async function triggerReport(parcelResult, btn, statusEl) {
   w.focus();
 
   const { generateReport } = await import("./report.js");
-  await generateReport(parcelResult, w, msg => { statusEl.textContent = msg; }, new Set(reportSelected));
+  await generateReport(
+    { ...parcelResult, serviceLabel: service?.label },
+    w,
+    msg => { statusEl.textContent = msg; },
+    new Set(reportSelected)
+  );
 
   statusEl.textContent = "";
   btn.textContent = "Report erstellen";

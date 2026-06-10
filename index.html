@@ -9,6 +9,7 @@
   <script src="https://unpkg.com/d3@7.9.0/dist/d3.min.js"></script>
   <script src="https://unpkg.com/@observablehq/plot@0.6.16/dist/plot.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
   <style>
     :root {
       --sidebar-w: 280px;
@@ -558,6 +559,57 @@
       margin-right: 5px;
       flex-shrink: 0;
     }
+
+    /* ── BUFFER SECTION ─────────────────────────────────────────────── */
+
+    .buffer-section {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .buffer-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .buffer-input {
+      width: 64px;
+      padding: 4px 6px;
+      font-size: 12px;
+      font-family: var(--font);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--text);
+      text-align: right;
+      outline: none;
+    }
+
+    .buffer-input:focus { border-color: var(--accent); }
+
+    .buffer-unit {
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .buffer-apply-btn {
+      flex: 1;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: var(--font);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .buffer-apply-btn:hover { background: var(--bg); }
 
     .report-btn {
       margin-top: 10px;

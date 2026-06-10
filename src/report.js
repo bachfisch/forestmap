@@ -49,7 +49,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
 
   // Write skeleton immediately
   w.document.open();
-  w.document.write(buildSkeletonHtml(parcelResult.properties, activeFern, activeWaldfunk, hasBiotope, hasStandort, genericByCategory, catLabel));
+  w.document.write(buildSkeletonHtml(parcelResult, activeFern, activeWaldfunk, hasBiotope, hasStandort, genericByCategory, catLabel));
   w.document.close();
 
   const tasks = [];
@@ -120,7 +120,8 @@ function updateSection(w, id, html) {
 
 // ── Section builders ──────────────────────────────────────────────────────────
 
-function buildSkeletonHtml(props, activeFern, activeWaldfunk, hasBiotope, hasStandort, genericByCategory, catLabel) {
+function buildSkeletonHtml(parcelResult, activeFern, activeWaldfunk, hasBiotope, hasStandort, genericByCategory, catLabel) {
+  const props = parcelResult.properties ?? {};
   const sections = [
     activeFern.length     ? `<div id="sec-fern"><h2>Fernerkundung</h2><p class="loading-hint">Pixelanalyse läuft…</p></div>` : "",
     activeWaldfunk.length ? `<div id="sec-waldfunk"><h2>Waldfunktionen</h2><p class="loading-hint">GFI-Abfragen laufen…</p></div>` : "",
@@ -131,20 +132,31 @@ function buildSkeletonHtml(props, activeFern, activeWaldfunk, hasBiotope, hasSta
     ),
   ].filter(Boolean).join("\n");
 
+  let heading, meta;
+  if (props["Flurstücknummer"] != null) {
+    heading = `Flurstück ${esc(props["Flurstücknummer"])}`;
+    meta = `Fläche: ${esc(props["Fläche"] ?? "–")} &nbsp;·&nbsp;
+  Katasterreferenz: ${esc(props["Katasterreferenz"] ?? "–")} &nbsp;·&nbsp;
+  Abgefragt: ${new Date().toLocaleDateString("de-DE")}`;
+  } else {
+    const svcLabel = esc(parcelResult.serviceLabel ?? "Polygon");
+    const name = props.name
+      ?? Object.values(props).find(v => typeof v === "string" && v.length > 1 && v.length < 80)
+      ?? null;
+    heading = name ? `${svcLabel}: ${esc(name)}` : svcLabel;
+    meta = `Abgefragt: ${new Date().toLocaleDateString("de-DE")}`;
+  }
+
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Flurstück-Report – ${esc(props?.["Flurstücknummer"] ?? "")}</title>
+<title>Report – ${heading}</title>
 <style>${REPORT_CSS}</style>
 </head>
 <body>
-<h1>Flurstück ${esc(props?.["Flurstücknummer"] ?? "–")}</h1>
-<p class="meta">
-  Fläche: ${esc(props?.["Fläche"] ?? "–")} &nbsp;·&nbsp;
-  Katasterreferenz: ${esc(props?.["Katasterreferenz"] ?? "–")} &nbsp;·&nbsp;
-  Abgefragt: ${new Date().toLocaleDateString("de-DE")}
-</p>
+<h1>${heading}</h1>
+<p class="meta">${meta}</p>
 ${sections}
 <footer>
   Datenquelle: FVA Baden-Württemberg via OWS-Proxy LGL BW &nbsp;·&nbsp;

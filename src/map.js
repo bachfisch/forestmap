@@ -11,6 +11,7 @@ import { queryOverpass, osmToGeoJson } from "./overpass.js";
 
 const WFS_SVCS      = SERVICES.filter(s => s.wfsUrl && !s.wmsUrl);
 const OVERPASS_SVCS = SERVICES.filter(s => s.overpassQuery);
+const BASEMAP_SVCS  = SERVICES.filter(s => s.fetchPoint === "basemap");
 
 const maplibregl = window.maplibregl;
 
@@ -239,6 +240,23 @@ document.addEventListener("DOMContentLoaded", () => {
               "Fläche": "–",
               "Katasterreferenz": feat.properties.osm_id ? `OSM ID: ${feat.properties.osm_id}` : "–",
             },
+            geometry: feat.geometry,
+          }],
+        });
+      }
+
+      for (const svc of BASEMAP_SVCS) {
+        if (!isVisible(svc.id, svc.layers[0].name)) continue;
+        const hits = map.queryRenderedFeatures(e.point, { layers: svc.mapLayerIds });
+        if (!hits.length) continue;
+        const feat = hits[0];
+        entries.push({
+          kind: "standard",
+          service: svc,
+          results: [{
+            layer: svc.layers[0],
+            value: feat.properties.name ?? feat.properties.bezeichnung ?? feat.properties.funktion ?? null,
+            properties: feat.properties,
             geometry: feat.geometry,
           }],
         });
