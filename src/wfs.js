@@ -31,7 +31,7 @@ export async function fetchBiotopesInBbox(west, south, east, north) {
 export async function fetchBiotopeAtPoint(lng, lat) {
   const d = 0.002;
   const features = await fetchBiotopesInBbox(lng - d, lat - d, lng + d, lat + d);
-  return features.filter(f => biotopeRingContains(f.ring, lng, lat));
+  return features.filter(f => biotopeRingContains(f.rings, lng, lat));
 }
 
 function parseBiotopeGml(gml) {
@@ -41,26 +41,31 @@ function parseBiotopeGml(gml) {
     const name        = el.getElementsByTagName("gml:name")[0]?.textContent?.trim() ?? null;
     const localName   = el.getElementsByTagName("hb:localName")[0]?.textContent?.trim() ?? null;
     const refTypeName = el.getElementsByTagName("hb:referenceHabitatTypeName")[0]?.textContent?.trim() ?? null;
-    const posListEl   = el.getElementsByTagName("gml:posList")[0];
-    if (!posListEl) continue;
-    const nums = posListEl.textContent.trim().split(/\s+/).map(Number);
-    const ring = [];
-    for (let i = 0; i + 1 < nums.length; i += 2) ring.push([nums[i], nums[i + 1]]);
-    if (ring.length < 3) continue;
-    features.push({ name, localName, refTypeName, ring });
+    // Read ALL rings — handles MultiSurface with multiple Polygon members
+    const rings = [];
+    for (const posListEl of el.getElementsByTagName("gml:posList")) {
+      const nums = posListEl.textContent.trim().split(/\s+/).map(Number);
+      const ring = [];
+      for (let i = 0; i + 1 < nums.length; i += 2) ring.push([nums[i], nums[i + 1]]);
+      if (ring.length >= 3) rings.push(ring);
+    }
+    if (!rings.length) continue;
+    features.push({ name, localName, refTypeName, rings });
   }
   return features;
 }
 
-function biotopeRingContains(ring, lng, lat) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1];
-    const xj = ring[j][0], yj = ring[j][1];
-    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
-      inside = !inside;
-  }
-  return inside;
+function biotopeRingContains(rings, lng, lat) {
+  return rings.some(ring => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)
+        inside = !inside;
+    }
+    return inside;
+  });
 }
 
 // ── Waldfunktionen WFS ────────────────────────────────────────────────────────
