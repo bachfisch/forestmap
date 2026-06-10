@@ -51,6 +51,19 @@ function renderSubGroup(name, services) {
   return details;
 }
 
+function makeInfoBtn(svc) {
+  const btn = document.createElement("button");
+  btn.className = "layer-info-btn";
+  btn.textContent = "ⓘ";
+  btn.title = "Info";
+  btn.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.openInfoModal?.(svc.label, svc.abstract);
+  });
+  return btn;
+}
+
 function renderService(svc) {
   const section = document.createElement("div");
   section.className = "svc-section";
@@ -58,11 +71,14 @@ function renderService(svc) {
 
   if (svc.layers.length === 1) {
     const layer = svc.layers[0];
-    section.append(renderToggle(svc, layer, svc.label));
+    section.append(renderToggle(svc, layer, svc.label, svc.abstract));
   } else {
     const svcHeader = document.createElement("div");
     svcHeader.className = "svc-header";
-    svcHeader.textContent = svc.label;
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = svc.label;
+    svcHeader.append(labelSpan);
+    if (svc.abstract) svcHeader.append(makeInfoBtn(svc));
     section.append(svcHeader);
 
     for (const layer of svc.layers) {
@@ -73,7 +89,7 @@ function renderService(svc) {
   return section;
 }
 
-function renderToggle(svc, layer, label) {
+function renderToggle(svc, layer, label, abstract) {
   const wrap = document.createElement("div");
 
   const row = document.createElement("label");
@@ -89,6 +105,7 @@ function renderToggle(svc, layer, label) {
   span.textContent = label;
 
   row.append(cb, span);
+  if (abstract) row.append(makeInfoBtn(svc));
   wrap.append(row);
 
   if (layer.sidebarFilter) {

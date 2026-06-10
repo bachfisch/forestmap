@@ -39,7 +39,9 @@ function parseXmlGfi(layer, xml) {
     if (pv !== null) {
       if (pv === "NoData" || pv === "") return { layer, value: null, properties: null };
       const n = parseFloat(pv);
-      return { layer, value: isNaN(n) ? null : n, properties: null };
+      const cv = fields.getAttribute("Classvalue");
+      const classIndex = cv !== null && cv !== "" ? parseInt(cv, 10) : null;
+      return { layer, value: isNaN(n) ? null : n, classIndex, properties: null };
     }
 
     const attrs = {};

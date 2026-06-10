@@ -452,6 +452,24 @@
       border-color: var(--accent);
     }
 
+    .layer-info-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0 2px;
+      flex-shrink: 0;
+      margin-left: auto;
+      opacity: 0.6;
+    }
+    .layer-info-btn:hover { color: var(--accent); opacity: 1; }
+
+    .layer-label { flex: 1; }
+
+    .svc-header { display: flex; align-items: center; }
+
     .layer-filter input.active {
       border-color: var(--accent);
       background: #f0faf6;
@@ -808,7 +826,7 @@
       <p>Diese Anwendung speichert keine personenbezogenen Daten. Es werden keine Cookies gesetzt und kein Tracking durchgeführt.</p>
       <h3>Externe Dienste</h3>
       <p>Beim Laden der Kartenanwendung werden Verbindungen zu folgenden externen Diensten hergestellt:</p>
-      <p><strong>OpenFreeMap</strong> (Basiskarte): Bereitgestellt von OpenFreeMap (openfreemap.org), basierend auf OpenStreetMap-Daten. Beim Abrufen von Kartenkacheln wird Ihre IP-Adresse an den Server übermittelt.</p>
+      <p><strong>basemap.de</strong> (Basiskarte): Bereitgestellt vom Bundesamt für Kartographie und Geodäsie (BKG) über den Dienst basemap.de. Beim Abrufen von Kartenkacheln wird Ihre IP-Adresse an den Server übermittelt.</p>
       <p><strong>FVA / LGL BW / DWD</strong> (Geodatendienste): Kartendaten und Abfragen werden über den OWS-Proxy des LGL BW abgerufen. Dabei wird Ihre IP-Adresse an den jeweiligen Server übermittelt.</p>
       <p><strong>unpkg.com</strong> (CDN): JavaScript-Bibliotheken werden von unpkg.com geladen. Dabei wird Ihre IP-Adresse übermittelt.</p>
     `;
@@ -832,6 +850,11 @@
     });
     closeBtn.addEventListener("click", () => modal.classList.remove("open"));
     modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("open"); });
+
+    window.openInfoModal = (label, abstract) => {
+      const html = `<p style="line-height:1.6;font-size:12px">${abstract.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>`;
+      openModal(label, html);
+    };
 
     const sidebarToggle = document.getElementById("sidebar-toggle");
     const sidebar = document.getElementById("sidebar");

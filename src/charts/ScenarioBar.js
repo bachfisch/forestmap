@@ -75,7 +75,8 @@ export function render({ results, serviceConfig }) {
   const wrapper = document.createElement("div");
   wrapper.className = "chart-scenario";
 
-  const valueMap = new Map(results.map(r => [r.layer.name, r.value]));
+  const valueMap      = new Map(results.map(r => [r.layer.name, r.value]));
+  const classIndexMap = new Map(results.map(r => [r.layer.name, r.classIndex ?? null]));
 
   const points = serviceConfig.layers.map(layer => {
     const { speciesKey, speciesLabel, meta, color } = parseLayerName(layer.name);
@@ -89,6 +90,7 @@ export function render({ results, serviceConfig }) {
       order: meta?.order ?? 99,
       color,
       value: valueMap.get(layer.name) ?? null,
+      classIndex: classIndexMap.get(layer.name) ?? null,
       layer,
     };
   });
@@ -116,13 +118,18 @@ export function render({ results, serviceConfig }) {
     }
   }
 
-  // Color bars from colorLegend value ranges when available
+  // Color bars from colorLegend — prefer server Classvalue (exact index), fall back to threshold matching
   for (const p of points) {
     const legend = legendForPoint(serviceConfig, p.layer.name);
-    if (!legend || p.rawValue == null) continue;
-    // Relative layers store fractional change (e.g. −0.12); legend labels use percent (e.g. −12)
-    const valForColor = p.layer.name.startsWith("relative_") ? p.rawValue * 100 : p.rawValue;
-    const c = colorFromLegend(valForColor, legend.entries);
+    if (!legend) continue;
+    let c = null;
+    if (p.classIndex !== null && isFinite(p.classIndex)) {
+      const idx = Math.max(0, Math.min(p.classIndex, legend.entries.length - 1));
+      c = legend.entries[idx].hex;
+    } else if (p.rawValue != null) {
+      const valForColor = p.layer.name.startsWith("relative_") ? p.rawValue * 100 : p.rawValue;
+      c = colorFromLegend(valForColor, legend.entries);
+    }
     if (c) p.color = c;
   }
 
@@ -132,26 +139,30 @@ export function render({ results, serviceConfig }) {
   const yMax = allVals.length ? Math.max(...allVals) : 1;
   const yDomain = allVals.length && yMax > yMin ? [yMin, yMax] : undefined;
 
-  for (const [, { label, points: pts }] of groupBySpecies(points)) {
-    const sorted = [...pts].sort((a, b) =>
-      a.groupOrder !== b.groupOrder ? a.groupOrder - b.groupOrder : a.order - b.order
-    );
+  if (serviceConfig.singleGroup) {
+    wrapper.append(renderBars(points.filter(p => p.value !== null), yDomain));
+  } else {
+    for (const [, { label, points: pts }] of groupBySpecies(points)) {
+      const sorted = [...pts].sort((a, b) =>
+        a.groupOrder !== b.groupOrder ? a.groupOrder - b.groupOrder : a.order - b.order
+      );
 
-    const deduped = [];
-    const seen = new Set();
-    for (const p of sorted) {
-      if (!seen.has(p.barLabel)) { seen.add(p.barLabel); deduped.push(p); }
+      const deduped = [];
+      const seen = new Set();
+      for (const p of sorted) {
+        if (!seen.has(p.barLabel)) { seen.add(p.barLabel); deduped.push(p); }
+      }
+
+      if (label) {
+        const title = document.createElement("div");
+        title.className = "species-title";
+        title.textContent = label;
+        wrapper.append(title);
+      }
+
+      wrapper.append(renderGroupAxis(deduped));
+      wrapper.append(renderBars(deduped, yDomain));
     }
-
-    if (label) {
-      const title = document.createElement("div");
-      title.className = "species-title";
-      title.textContent = label;
-      wrapper.append(title);
-    }
-
-    wrapper.append(renderGroupAxis(deduped));
-    wrapper.append(renderBars(deduped, yDomain));
   }
 
   return wrapper;

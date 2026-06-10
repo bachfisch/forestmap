@@ -530,6 +530,7 @@ export const SERVICES = [
     ],
     featureInfoType: "value-only",
     chartComponent: "ScenarioBar",
+    singleGroup: true,
     colorLegend: { type: "histogram", entries: [
       { hex: "#f1eea9", label: "sehr gering" },
       { hex: "#bdac7c", label: "gering" },
