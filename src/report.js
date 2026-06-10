@@ -2,7 +2,7 @@ import { SERVICES, CATEGORIES } from "../services.js";
 import { fetchBiotopesInBbox } from "./wfs.js";
 
 const WALDFUNK_SVCS = SERVICES.filter(s => s.category === "waldfunktionen");
-const FERN_SVCS     = SERVICES.filter(s => s.category === "fernerkundung");
+const FERN_SVCS     = SERVICES.filter(s => s.category === "fernerkundung" || s.category === "thuenen");
 const BIOTOPE_SVC   = SERVICES.find(s => s.id === "waldbiotope");
 const STANDORT_SVC  = SERVICES.find(s => s.id === "standortskarte");
 

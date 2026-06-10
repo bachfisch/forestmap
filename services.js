@@ -8,6 +8,7 @@ export const CATEGORIES = [
   { id: "klima",          label: "Klimafolgenforschung",       icon: "🌡️" },
   { id: "windenergie",    label: "Windenergie im Wald",        icon: "💨" },
   { id: "fernerkundung",  label: "Fernerkundung",              icon: "🛰️" },
+  { id: "thuenen",        label: "Thünen-Institut",            icon: "🌳" },
   { id: "dwd",            label: "DWD Wetter & Klima",         icon: "☁️" },
   { id: "forstbw",        label: "ForstBW",                    icon: "🌳" },
   { id: "flurstücke",    label: "Flurstücke",                 icon: "📐" },
@@ -939,6 +940,37 @@ export const SERVICES = [
     group: "F3-Projekt",
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
+  },
+
+  // ─── THÜNEN-INSTITUT ──────────────────────────────────────────────────────────
+
+  {
+    id: "thuenen-baumarten",
+    category: "thuenen",
+    label: "Dominante Baumart Deutschland (2017/18)",
+    abstract: "Karte der dominanten Baumarten für Deutschland auf Basis von Sentinel-1/2-Zeitreihen und Daten der 3. Bundeswaldinventur (Blickensdörfer et al. 2024). 11 Baumarten- bzw. Baumgruppenklassen, Gesamtgenauigkeit 75,5 %. Stand: 2017/2018.",
+    wmsUrl: "https://atlas.thuenen.de/geoserver/geonode/Dominant_Species_Class/ows",
+    wmsVersion: "1.3.0",
+    layers: [
+      { name: "Dominant_Species_Class", label: "Dominante Baumart", defaultVisible: false },
+    ],
+    featureInfoType: "value-only",
+    colorLegend: { type: "pie", entries: [
+      { hex: "#cd8673", label: "Fichte" },
+      { hex: "#de1317", label: "Kiefer" },
+      { hex: "#e7ec47", label: "Douglasie" },
+      { hex: "#ffd54d", label: "Tanne" },
+      { hex: "#df3fea", label: "Lärche" },
+      { hex: "#49ca45", label: "Buche" },
+      { hex: "#1a761c", label: "Eiche" },
+      { hex: "#67844d", label: "Erle" },
+      { hex: "#d1efe2", label: "Birke" },
+      { hex: "#25a0ed", label: "Laubbaum langlebig" },
+      { hex: "#8ebcd9", label: "Laubbaum kurzlebig" },
+    ]},
+    attribution: "© Thünen Institut – Blickensdörfer et al. (2024), doi:10.1016/j.rse.2024.114069",
+    updateInterval: "static",
+    license: "open-data",
   },
 
   // ─── DWD WETTER & KLIMA ────────────────────────────────────────────────────

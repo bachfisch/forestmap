@@ -116,9 +116,9 @@ function addLayer(map, svc, layer) {
       type: "raster",
       tiles: [buildTileUrl(svc, layer)],
       tileSize: 256,
-      attribution: svc.license === "open-data"
+      attribution: svc.attribution ?? (svc.license === "open-data"
         ? "Datenquelle: FVA, www.fva-bw.de"
-        : "© FVA BW – Nutzungsbedingungen beachten",
+        : "© FVA BW – Nutzungsbedingungen beachten"),
     });
   }
 

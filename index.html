@@ -43,42 +43,53 @@
     /* ── SIDEBAR ─────────────────────────────────────────────── */
 
     #sidebar {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      bottom: 10px;
       width: var(--sidebar-w);
-      flex-shrink: 0;
+      z-index: 20;
       background: var(--surface);
-      border-right: 1px solid var(--border);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transition: width 0.2s ease;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.10);
+      transition: width 0.2s ease, opacity 0.2s ease, border 0.2s ease;
     }
 
-    #sidebar.collapsed { width: 0; border-right: none; }
+    #sidebar.collapsed {
+      width: 0;
+      opacity: 0;
+      border-color: transparent;
+      pointer-events: none;
+    }
 
     #sidebar-toggle {
       position: absolute;
-      left: 0;
+      left: calc(var(--sidebar-w) + 18px);
       top: 50%;
       transform: translateY(-50%);
       z-index: 20;
-      width: 16px;
-      height: 48px;
+      width: 18px;
+      height: 44px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-left: none;
-      border-radius: 0 var(--radius) var(--radius) 0;
-      box-shadow: 2px 0 6px rgba(0,0,0,0.08);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 8px rgba(0,0,0,0.10);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 13px;
-      color: var(--text-muted);
+      color: var(--accent);
       padding: 0;
       line-height: 1;
+      transition: left 0.2s ease;
     }
 
-    #sidebar-toggle:hover { color: var(--text); background: var(--bg); }
+    #sidebar-toggle:hover { background: var(--bg); }
 
     #sidebar-header {
       padding: 14px 16px 12px;
@@ -861,6 +872,7 @@
     sidebarToggle.addEventListener("click", () => {
       const collapsed = sidebar.classList.toggle("collapsed");
       sidebarToggle.textContent = collapsed ? "›" : "‹";
+      sidebarToggle.style.left = collapsed ? "10px" : "";
     });
   </script>
 </body>

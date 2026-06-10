@@ -184,7 +184,7 @@ export async function queryAtPoint(lng, lat) {
 
   for (const svc of activeServices) {
     const cat = svc.category;
-    if (cat === "fernerkundung") {
+    if (cat === "fernerkundung" || cat === "thuenen") {
       for (const l of svc.layers.filter(l => visible.has(`${svc.id}::${l.name}`)))
         tasks.push({ kind: "fern", service: svc, layer: l });
     } else if (cat === "klima" || cat === "dwd") {
