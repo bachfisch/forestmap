@@ -52,12 +52,25 @@ function addWfsLayer(map, svc) {
   }
 }
 
+const WFS_MIN_ZOOM = 11;
+const wfsControllers = new Map();
+
 async function refreshWfsLayer(map, svc) {
   if (!isVisible(svc.id, svc.layers[0].name)) return;
+  const src = map.getSource(`wfs-src-${svc.id}`);
+  if (!src) return;
+  if (map.getZoom() < WFS_MIN_ZOOM) {
+    wfsControllers.get(svc.id)?.abort();
+    src.setData({ type: "FeatureCollection", features: [] });
+    return;
+  }
+  wfsControllers.get(svc.id)?.abort();
+  const ctrl = new AbortController();
+  wfsControllers.set(svc.id, ctrl);
   const b = map.getBounds();
   const bbox = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`;
-  const geoJson = await fetchWfsGeoJson(svc.wfsUrl, bbox);
-  map.getSource(`wfs-src-${svc.id}`)?.setData(geoJson);
+  const geoJson = await fetchWfsGeoJson(svc.wfsUrl, bbox, ctrl.signal);
+  if (geoJson) src.setData(geoJson);
 }
 
 function syncWfsVisibility(map) {

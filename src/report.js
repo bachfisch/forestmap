@@ -1,5 +1,5 @@
 import { SERVICES, CATEGORIES } from "../services.js";
-import { fetchBiotopesInBbox } from "./wfs.js";
+import { fetchBiotopesInBbox, gmlToGeoJson } from "./wfs.js";
 
 const WALDFUNK_SVCS = SERVICES.filter(s => s.fetchPolygon === "wfs-coverage");
 const FERN_SVCS     = SERVICES.filter(s => s.fetchPolygon === "pixel-hist");
@@ -73,7 +73,7 @@ export async function generateReport(parcelResult, w, onStatus = () => {}, selec
     tasks.push(
       Promise.all(activeWaldfunk.map(svc =>
         (svc.wfsUrl
-          ? fetchWaldfunkWfs(svc, bbox, gridPts)
+          ? fetchWaldfunkWfs(svc, bbox, geom)
           : gfiCoverage(svc.wmsUrl, svc.layers[0].name, gridPts)
         ).then(pct => ({ label: svc.label, pct }))
       ))
@@ -135,6 +135,10 @@ function buildSkeletonHtml(parcelResult, activeFern, activeWaldfunk, hasBiotope,
     ),
   ].filter(Boolean).join("\n");
 
+  const SKIP_KEYS = new Set(["OBJECTID", "Shape", "geometry", "bbox", "type",
+    "SHAPE_Length", "SHAPE_Area", "BetriebsID", "Schluessel", "_serviceLabel",
+    "Flurstücknummer", "Fläche", "Katasterreferenz"]);
+
   let heading, meta;
   if (props["Flurstücknummer"] != null) {
     heading = `Flurstück ${esc(props["Flurstücknummer"])}`;
@@ -150,6 +154,15 @@ function buildSkeletonHtml(parcelResult, activeFern, activeWaldfunk, hasBiotope,
     meta = `Abgefragt: ${new Date().toLocaleDateString("de-DE")}`;
   }
 
+  // Attribute table — all non-trivial properties
+  const attrRows = Object.entries(props)
+    .filter(([k, v]) => !SKIP_KEYS.has(k) && v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(String(v))}</td></tr>`)
+    .join("");
+  const attrTable = attrRows
+    ? `<table class="attr-table" style="margin-bottom:24px"><tbody>${attrRows}</tbody></table>`
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -160,6 +173,7 @@ function buildSkeletonHtml(parcelResult, activeFern, activeWaldfunk, hasBiotope,
 <body>
 <h1>${heading}</h1>
 <p class="meta">${meta}</p>
+${attrTable}
 ${sections}
 <footer>
   Datenquelle: FVA Baden-Württemberg via OWS-Proxy LGL BW &nbsp;·&nbsp;
@@ -324,27 +338,36 @@ function buildGenericCatHtml(secId, catLabel, svcs, results) {
 
 // ── Waldfunktionen WFS coverage ──────────────────────────────────────────────
 
-async function fetchWaldfunkWfs(svc, bbox, gridPts) {
+async function fetchWaldfunkWfs(svc, bbox, geom) {
   const url =
     `${svc.wfsUrl}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature` +
     `&TYPENAMES=elu:ExistingLandUseObject&SRSNAME=EPSG:4326` +
-    `&BBOX=${bbox},EPSG:4326&COUNT=200`;
+    `&BBOX=${bbox},EPSG:4326&COUNT=5000`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!res.ok) return null;
-    const text = await res.text();
-    const polygons = parseGmlPolygons(text);
-    if (!polygons.length) return 0;
-    let hit = 0;
-    for (const { lng, lat } of gridPts) {
-      if (polygons.some(ring => pointInPolygon(lng, lat, ring))) hit++;
+    const features = gmlToGeoJson(await res.text()).features;
+    if (!features.length) return 0;
+
+    const turf = window.turf;
+    if (!turf || !geom) return null;
+
+    const selFeat  = { type: "Feature", geometry: geom,  properties: {} };
+    const selArea  = turf.area(selFeat);
+    if (!selArea) return null;
+
+    let intersectArea = 0;
+    for (const feat of features) {
+      try {
+        const inter = turf.intersect(selFeat, feat);
+        if (inter) intersectArea += turf.area(inter);
+      } catch { /* skip invalid geometry */ }
     }
-    return gridPts.length > 0 ? Math.round(hit / gridPts.length * 100) : null;
+    return Math.round(intersectArea / selArea * 100);
   } catch { return null; }
 }
 
-function parseGmlPolygons(gml) {
-  const doc = new DOMParser().parseFromString(gml, "text/xml");
+function parseGmlPolygons(doc) {
   const rings = [];
   for (const el of doc.getElementsByTagName("gml:posList")) {
     const nums = el.textContent.trim().split(/\s+/).map(Number);
@@ -673,9 +696,9 @@ const REPORT_CSS = `
   .hist-bar-wrap { flex: 1; display: flex; align-items: center; gap: 6px; }
   .hist-bar { height: 14px; min-width: 2px; border-radius: 2px; }
   .hist-pct { font-size: 10px; color: #888780; white-space: nowrap; }
-  .attr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .attr-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
   .attr-table th, .attr-table td { padding: 3px 0; vertical-align: top; border-bottom: 1px solid #e0ddd8; }
-  .attr-table th { width: 40%; color: #888780; font-weight: 500; padding-right: 8px; }
+  .attr-table th { width: 40%; color: #888780; font-weight: 500; padding-right: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .attr-table td { color: #2a2722; word-break: break-word; }
   footer { margin-top: 48px; font-size: 11px; color: #aaa; border-top: 1px solid #e0ddd8; padding-top: 12px; }
   @media print { body { max-width: 100%; margin: 16px; } }

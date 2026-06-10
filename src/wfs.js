@@ -72,15 +72,15 @@ function biotopeRingContains(rings, lng, lat) {
 
 const WFS_FEATURE_TYPE = "elu:ExistingLandUseObject";
 
-export async function fetchWfsGeoJson(wfsUrl, bbox) {
+export async function fetchWfsGeoJson(wfsUrl, bbox, signal) {
   const url = `${wfsUrl}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature` +
     `&TYPENAMES=${WFS_FEATURE_TYPE}&SRSNAME=EPSG:4326` +
     `&BBOX=${bbox},EPSG:4326&COUNT=500`;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return emptyCollection();
+    const res = await fetch(url, { signal: signal ?? AbortSignal.timeout(15000) });
+    if (!res.ok) return null;
     return gmlToGeoJson(await res.text());
-  } catch { return emptyCollection(); }
+  } catch { return null; }
 }
 
 export async function fetchWfsPoint(wfsUrl, lng, lat) {

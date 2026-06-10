@@ -196,7 +196,7 @@ export async function queryAtPoint(lng, lat) {
   };
 
   const activeServices = SERVICES.filter(s =>
-    s.fetchPoint !== "none" && s.fetchPoint !== "overpass" &&
+    s.fetchPoint !== "none" && s.fetchPoint !== "overpass" && s.fetchPoint !== "basemap" &&
     s.layers.some(l => visible.has(`${s.id}::${l.name}`))
   );
 

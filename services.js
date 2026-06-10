@@ -185,6 +185,7 @@ export const SERVICES = [
     updateInterval: "static",
     license: "fva-nutzungsbedingungen",
     minZoom: 6,
+    gfiBboxDeg: 0.01,
   },
 
   // ─── WILDTIERÖKOLOGIE ──────────────────────────────────────────────────────
